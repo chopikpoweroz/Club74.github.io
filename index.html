@@ -70,26 +70,13 @@
             display: none !important;
         }
 
-        body.on-hub #homeNavBtn {
-            display: none !important;
-        }
-
-        body.on-timer:not(.is-admin) .header,
-        body.on-grid:not(.is-admin) .header {
-            display: none !important;
-        }
-
-        body.on-timer.is-admin #timerFooterAuth {
-            display: none !important;
-        }
-
         body.on-hub .header #userRole,
         body.on-hub .header #loginBtn,
         body.on-hub .header #logoutBtn {
             display: none !important;
         }
 
-        .hub-footer-auth {
+        body.on-hub .hub-footer-auth {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -100,7 +87,8 @@
             opacity: 0.85;
         }
 
-        .hub-footer-auth button {
+        body.on-hub .hub-footer-auth #hubLoginBtn,
+        body.on-hub .hub-footer-auth #hubLogoutBtn {
             font-size: 12px;
             padding: 6px 14px;
             background: rgba(255,255,255,0.08);
@@ -110,12 +98,13 @@
             font-weight: 400;
         }
 
-        .hub-footer-auth button:hover {
+        body.on-hub .hub-footer-auth #hubLoginBtn:hover,
+        body.on-hub .hub-footer-auth #hubLogoutBtn:hover {
             background: rgba(255,255,255,0.14);
             color: rgba(232,199,102,0.85);
         }
 
-        .hub-footer-auth .user-role {
+        body.on-hub .hub-footer-auth .user-role {
             font-size: 12px;
             opacity: 0.6;
         }
@@ -298,6 +287,7 @@
         body.on-hub .hub-tile--grid::before        { content: '♠'; color: var(--hub-gold-soft); }
         body.on-hub .hub-tile--rules::before       { content: '📜'; color: var(--hub-gold); }
         body.on-hub .hub-tile--rating::before      { content: '♥'; color: var(--hub-gold-soft); }
+        body.on-hub .hub-tile--league::before      { content: '♠'; color: var(--hub-gold); }
         body.on-hub .hub-tile--tournament::before  { content: '♣'; color: var(--hub-wine); }
         body.on-hub .hub-tile--editor::before      { content: '🎛'; color: var(--hub-gold); }
         body.on-hub .hub-tile--results::before     { content: '♦'; color: var(--hub-wine); }
@@ -511,18 +501,12 @@
 
         .timer-time {
             text-align: center;
-            font-size: clamp(64px, 15vw, 140px);
-            font-weight: 800;
-            color: #fbe9c0;
+            font-size: clamp(64px, 10vw, 96px);
+            font-weight: bold;
+            color: white;
             margin: 20px 0;
             font-family: 'Courier New', monospace;
-            letter-spacing: 0.02em;
-            text-shadow:
-                0 1px 0 #8a6a1f,
-                0 2px 0 #7c5d16,
-                0 3px 0 #6b4f12,
-                0 4px 6px rgba(0,0,0,0.5),
-                0 0 40px rgba(212,175,55,0.35);
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
         }
 
         .progress-container {
@@ -1434,7 +1418,7 @@
 
         @media (max-width: 768px) {
             .timer-time {
-                font-size: clamp(48px, 16vw, 72px);
+                font-size: 48px;
             }
 
             .blinds-display {
@@ -1474,7 +1458,7 @@
 	
         @media (max-width: 480px) {
             .timer-time {
-                font-size: clamp(38px, 17vw, 52px);
+                font-size: 36px;
             }
 
             .blinds-display {
@@ -1979,7 +1963,7 @@
         <div class="user-info">
     	<span class="user-role" id="userRole"> </span>
 
-    	<button class="btn nav-btn" id="homeNavBtn" data-page="hubPage">🏠 Главная</button>
+    	<button class="btn nav-btn" data-page="hubPage">🏠 Главная</button>
 
     	<div class="header-nav-group" id="headerNavGroup">
     	<button class="btn" id="leagueBtn" onclick="window.location.href='League.html'">♠ Лига 4покеристов</button>
@@ -2029,19 +2013,25 @@
                     <span class="hub-tile-desc">Очки и кубки участников клуба</span>
                 </button>
 
-                <button class="hub-tile hub-tile-admin hub-tile--tournament nav-btn hub-admin-only" data-page="tournamentPage" style="--i:4">
+                <button class="hub-tile hub-tile--league" onclick="window.location.href='League.html'" style="--i:4">
+                    <span class="hub-tile-icon">♠</span>
+                    <span class="hub-tile-title">Лига Чпокеристов</span>
+                    <span class="hub-tile-desc">О лиге и структуре сезона</span>
+                </button>
+
+                <button class="hub-tile hub-tile-admin hub-tile--tournament nav-btn hub-admin-only" data-page="tournamentPage" style="--i:5">
                     <span class="hub-tile-icon">⚙️</span>
                     <span class="hub-tile-title">Турнир</span>
                     <span class="hub-tile-desc">Финальный стол, завершение</span>
                 </button>
 
-                <button class="hub-tile hub-tile-admin hub-tile--editor nav-btn hub-admin-only" data-page="editorPage" style="--i:5">
+                <button class="hub-tile hub-tile-admin hub-tile--editor nav-btn hub-admin-only" data-page="editorPage" style="--i:6">
                     <span class="hub-tile-icon">🎛</span>
                     <span class="hub-tile-title">Редактор</span>
                     <span class="hub-tile-desc">Шаблоны, звук, настройки</span>
                 </button>
 
-                <button class="hub-tile hub-tile-admin hub-tile--results nav-btn hub-admin-only" data-page="ratingPage" style="--i:6">
+                <button class="hub-tile hub-tile-admin hub-tile--results nav-btn hub-admin-only" data-page="ratingPage" style="--i:7">
                     <span class="hub-tile-icon">🏆</span>
                     <span class="hub-tile-title">Результаты</span>
                     <span class="hub-tile-desc">Таблица итогов турнира</span>
@@ -2105,13 +2095,6 @@
                     <div class="stat-label">Статус</div>
                     <div class="stat-value" id="timerStatus">Готов</div>
                 </div>
-            </div>
-
-            <div class="hub-footer-auth" id="timerFooterAuth">
-                <button class="btn nav-btn" data-page="hubPage">🏠 На главную</button>
-                <span class="user-role" id="timerFooterRole"> </span>
-                <button class="btn" id="timerFooterLoginBtn">Вход для админа</button>
-                <button class="btn" id="timerFooterLogoutBtn" style="display:none;">Выход</button>
             </div>
         </div>
     </div>
