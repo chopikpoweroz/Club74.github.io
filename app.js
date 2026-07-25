@@ -3510,9 +3510,6 @@ window.renderTournamentPrizeRows = renderTournamentPrizeRows;
 window.saveTournamentPoints = saveTournamentPoints;
 window.loadTournamentPointsPreset = loadTournamentPointsPreset;
 
-window.saveTournamentRules = saveTournamentRules;
-window.insertTournamentDefaultRules = insertTournamentDefaultRules;
-
 init();
 
 
