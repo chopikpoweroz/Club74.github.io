@@ -287,6 +287,7 @@ async function ensureTournamentIdV2() {
 function timerRowToData(row) {
     return {
         currentLevel: row.current_level,
+        timeRemaining: row.time_remaining,
         totalLevelTime: row.total_level_time,
         targetEndTime: row.target_end_time ? new Date(row.target_end_time).getTime() : null,
         isRunning: row.is_running,
@@ -395,6 +396,7 @@ async function writeTimerToCloudV2() {
         .from('timer_state')
         .update({
             current_level: t.currentLevel,
+            time_remaining: t.timeRemaining,
             total_level_time: t.totalLevelTime,
             target_end_time: t.targetEndTime ? new Date(t.targetEndTime).toISOString() : null,
             is_running: t.isRunning,
@@ -3139,6 +3141,8 @@ function insertTournamentDefaultRules() {
 function showPage(pageId) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
 
+    document.body.classList.toggle('on-hub', pageId === 'hubPage');
+
     ensureRulesPage();
     ensureTournamentPage();
 
@@ -3168,6 +3172,7 @@ function showPage(pageId) {
 
 function updateAdminUI() {
     setText('userRole', state.isAdmin ? 'Админ' : 'Гость');
+    setText('hubUserRole', state.isAdmin ? 'Админ' : 'Гость');
 
     // Эти кнопки видны всем: и админу, и гостю
     show($('leagueBtn'), 'inline-block');
@@ -3178,9 +3183,11 @@ function updateAdminUI() {
 
     if (state.isAdmin) {
         show($('editorBtn'), 'inline-block');
-        show($('hubAdminSection'), 'block');
+        document.body.classList.add('is-admin');
         hide($('loginBtn'));
         show($('logoutBtn'), 'inline-block');
+        hide($('hubLoginBtn'));
+        show($('hubLogoutBtn'), 'inline-block');
 
         show($('timerControls'), 'flex');
         show($('progressContainer'));
@@ -3188,9 +3195,11 @@ function updateAdminUI() {
         show($('saveRatingJpgBtn'), 'inline-block');
     } else {
         hide($('editorBtn'));
-        hide($('hubAdminSection'));
+        document.body.classList.remove('is-admin');
         show($('loginBtn'), 'inline-block');
         hide($('logoutBtn'));
+        show($('hubLoginBtn'), 'inline-block');
+        hide($('hubLogoutBtn'));
 
         hide($('timerControls'));
         hide($('progressContainer'));
@@ -3248,10 +3257,6 @@ function resetAll() {
  ************************************************************/
 
    function bindEvents() {
-     if ($('hubRegisterTile')) {
-        $('hubRegisterTile').onclick = () => openRegistrationEntry();
-     }
-
      document.addEventListener('click', e => {
         const navBtn = e.target.closest('.nav-btn');
 
@@ -3286,6 +3291,12 @@ function resetAll() {
     $('progressContainer').onclick = seekTimerByProgress;
 
     $('loginBtn').onclick = () => $('loginModal').classList.add('active');
+    if ($('hubLoginBtn')) {
+        $('hubLoginBtn').onclick = () => $('loginModal').classList.add('active');
+    }
+    if ($('gridGuestRegisterBtn')) {
+        $('gridGuestRegisterBtn').onclick = () => openRegistrationEntry();
+    }
     $('cancelLoginBtn').onclick = () => $('loginModal').classList.remove('active');
 
     $('confirmLoginBtn').onclick = async () => {
@@ -3315,6 +3326,12 @@ function resetAll() {
         await adminLogout();
         showPage('timerPage');
     };
+
+    if ($('hubLogoutBtn')) {
+        $('hubLogoutBtn').onclick = async () => {
+            await adminLogout();
+        };
+    }
 
     $('addPlayerBtn').onclick = addPlayer;
     $('createGridBtn').onclick = createGrid;
@@ -3899,11 +3916,15 @@ init();
         ensurePasswordModal();
 
         const userInfo = document.querySelector('.user-info');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const editorBtn = document.getElementById('editorBtn');
 
         if (!userInfo) return;
 
+        /**
+         * Эти три кнопки скрыты (display:none) по умолчанию и появляются
+         * только через updateAdminFeatureButtons() — их точное место в
+         * шапке не принципиально, поэтому просто добавляем в конец
+         * .user-info, без хрупкой привязки к соседним кнопкам.
+         */
         if (!document.getElementById('adminPasswordFixBtn')) {
             const btn = document.createElement('button');
             btn.className = 'btn';
@@ -3913,11 +3934,7 @@ init();
             btn.style.display = 'none';
             btn.onclick = openPasswordModal;
 
-            if (logoutBtn) {
-                userInfo.insertBefore(btn, logoutBtn);
-            } else {
-                userInfo.appendChild(btn);
-            }
+            userInfo.appendChild(btn);
         }
 
         if (!document.getElementById('guestGridToggleBtn')) {
@@ -3928,13 +3945,7 @@ init();
             btn.style.display = 'none';
             btn.onclick = toggleGuestGridVisibility;
 
-            if (editorBtn) {
-                userInfo.insertBefore(btn, editorBtn.nextSibling);
-            } else if (logoutBtn) {
-                userInfo.insertBefore(btn, logoutBtn);
-            } else {
-                userInfo.appendChild(btn);
-            }
+            userInfo.appendChild(btn);
         }
 
         if (!document.getElementById('guestRegistrationToggleBtn')) {
@@ -3945,17 +3956,7 @@ init();
             btn.style.display = 'none';
             btn.onclick = toggleGuestRegistrationVisibility;
 
-            const gridToggleBtn = document.getElementById('guestGridToggleBtn');
-
-            if (gridToggleBtn) {
-                userInfo.insertBefore(btn, gridToggleBtn.nextSibling);
-            } else if (editorBtn) {
-                userInfo.insertBefore(btn, editorBtn.nextSibling);
-            } else if (logoutBtn) {
-                userInfo.insertBefore(btn, logoutBtn);
-            } else {
-                userInfo.appendChild(btn);
-            }
+            userInfo.appendChild(btn);
         }
 
         updateAdminFeatureButtons();
@@ -4059,14 +4060,18 @@ init();
 
     function applyGuestRegistrationVisibility() {
         const registrationBtn = document.getElementById('registrationBtn');
+        const gridRegisterBtn = document.getElementById('gridGuestRegisterBtn');
 
         const guestRegistrationVisible = state.settings.guestRegistrationVisible !== false;
 
         /**
-         * Админ всегда видит кнопку регистрации.
+         * Кнопка регистрации в сетке видна только гостю —
+         * у админа там своя панель добавления участников
+         * с очками (playerRegistrationSection).
          */
         if (state.isAdmin) {
             if (registrationBtn) registrationBtn.style.display = 'inline-block';
+            if (gridRegisterBtn) gridRegisterBtn.style.display = 'none';
             return;
         }
 
@@ -4075,8 +4080,10 @@ init();
          */
         if (guestRegistrationVisible) {
             if (registrationBtn) registrationBtn.style.display = 'inline-block';
+            if (gridRegisterBtn) gridRegisterBtn.style.display = 'inline-block';
         } else {
             if (registrationBtn) registrationBtn.style.display = 'none';
+            if (gridRegisterBtn) gridRegisterBtn.style.display = 'none';
 
             /**
              * Если гость уже открыл модалку регистрации,
