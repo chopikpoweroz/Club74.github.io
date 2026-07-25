@@ -3178,6 +3178,7 @@ function updateAdminUI() {
 
     if (state.isAdmin) {
         show($('editorBtn'), 'inline-block');
+        show($('hubAdminSection'), 'block');
         hide($('loginBtn'));
         show($('logoutBtn'), 'inline-block');
 
@@ -3187,6 +3188,7 @@ function updateAdminUI() {
         show($('saveRatingJpgBtn'), 'inline-block');
     } else {
         hide($('editorBtn'));
+        hide($('hubAdminSection'));
         show($('loginBtn'), 'inline-block');
         hide($('logoutBtn'));
 
@@ -3246,6 +3248,10 @@ function resetAll() {
  ************************************************************/
 
    function bindEvents() {
+     if ($('hubRegisterTile')) {
+        $('hubRegisterTile').onclick = () => openRegistrationEntry();
+     }
+
      document.addEventListener('click', e => {
         const navBtn = e.target.closest('.nav-btn');
 
