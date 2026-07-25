@@ -8,11 +8,18 @@
  ************************************************************/
 
 const SUPABASE_URL = 'https://ivvzrjnutuyoqtlzpbqx.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_yazZ-oVnnAzq4zci1mlRZQ_7XxA2Np-';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2dnpyam51dHV5b3F0bHpwYnF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjY2NzQsImV4cCI6MjA5ODQwMjY3NH0.haUuHEhGrBCQ5xflu_l-dKmFRMs_r-Qo3rlCSzvec4I';
+
+// Единственный админ входит через Supabase Auth (email+пароль).
+// В UI остаётся только поле пароля, email зашит здесь.
+const ADMIN_EMAIL = 'Caponerj@mail.ru';
 
 let supabaseClient = null;
 let applyingRemote = false;
 let cloudReady = false;
+
+// v2: id турнира в новых таблицах (tournaments/timer_state/players/tables/settings)
+let tournamentIdV2 = null;
 
 /************************************************************
  * STATE
@@ -196,15 +203,14 @@ function loadLocal(key, fallback = null) {
     }
 }
 
-function saveAdminState() {
-    localStorage.setItem('pokerTimerIsAdmin', String(state.isAdmin));
-    localStorage.setItem('pokerTimerPassword', state.settings.adminPassword);
-}
-
-function loadAdminState() {
-    state.isAdmin = localStorage.getItem('pokerTimerIsAdmin') === 'true';
-    state.settings.adminPassword = localStorage.getItem('pokerTimerPassword') || 'secret';
-}
+/**
+ * v2: админ-статус больше не хранится в localStorage и не завязан
+ * на общий пароль. Источник истины — сессия Supabase Auth.
+ * state.isAdmin выставляется в onAuthStateChange (см. ниже) и
+ * автоматически восстанавливается при перезагрузке страницы,
+ * пока сессия не истекла — работает в любом браузере/инкогнито,
+ * если ввести правильный пароль хотя бы раз.
+ */
 
 /************************************************************
  * SUPABASE SYNC
@@ -217,6 +223,195 @@ function supabaseConfigured() {
         !SUPABASE_KEY.includes('ВСТАВЬ');
 }
 
+/************************************************************
+ * v2 AUTH (Supabase Auth вместо общего пароля в localStorage)
+ ************************************************************/
+
+async function adminLogin(password) {
+    if (!supabaseClient) return { error: 'Supabase не готов' };
+
+    const { error } = await supabaseClient.auth.signInWithPassword({
+        email: ADMIN_EMAIL,
+        password
+    });
+
+    return { error: error ? error.message : null };
+}
+
+async function adminLogout() {
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signOut();
+}
+
+function handleAuthChange(session) {
+    state.isAdmin = !!session;
+    updateAdminUI();
+    renderTables();
+
+    // Как только узнали, что мы админ — подтягиваем актуальный
+    // таймер из облака (на случай если гостевой поллинг что-то пропустил).
+    if (state.isAdmin) {
+        loadTimerFromCloudV2();
+    }
+}
+
+/************************************************************
+ * v2 TIMER SYNC (таблица timer_state вместо ключа 'timer'
+ * в общей свалке app_state)
+ ************************************************************/
+
+async function ensureTournamentIdV2() {
+    if (tournamentIdV2) return tournamentIdV2;
+    if (!supabaseClient) return null;
+
+    const { data, error } = await supabaseClient
+        .from('tournaments')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.error('v2: ошибка чтения tournaments:', error);
+        return null;
+    }
+
+    if (!data) {
+        console.warn('v2: строка в tournaments не найдена. Проверь, что 01_schema.sql выполнялся.');
+        return null;
+    }
+
+    tournamentIdV2 = data.id;
+    return tournamentIdV2;
+}
+
+function timerRowToData(row) {
+    return {
+        currentLevel: row.current_level,
+        totalLevelTime: row.total_level_time,
+        targetEndTime: row.target_end_time ? new Date(row.target_end_time).getTime() : null,
+        isRunning: row.is_running,
+        isPaused: row.is_paused,
+        isBreak: row.is_break,
+        breakType: row.break_type,
+        tournamentEnded: row.tournament_ended,
+        tournamentStartedAt: row.tournament_started_at ? new Date(row.tournament_started_at).getTime() : null
+    };
+}
+
+function applyTimerRowV2(row) {
+    if (!row) return;
+
+    applyingRemote = true;
+    applyTimerData(timerRowToData(row));
+    applyingRemote = false;
+
+    saveLocal('pokerTimerState', makeTimerData());
+    syncTimer(true);
+    updateTimerDisplay();
+    restartTimerIntervalIfNeeded();
+}
+
+async function loadTimerFromCloudV2() {
+    const id = await ensureTournamentIdV2();
+    if (!id || !supabaseClient) return;
+
+    const { data, error } = await supabaseClient
+        .from('timer_state')
+        .select('*')
+        .eq('tournament_id', id)
+        .maybeSingle();
+
+    if (error) {
+        console.error('v2: ошибка чтения timer_state:', error);
+        return;
+    }
+
+    if (data) applyTimerRowV2(data);
+}
+
+function subscribeTimerV2(id) {
+    supabaseClient
+        .channel('poker_timer_v2_timer_state')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'timer_state',
+                filter: 'tournament_id=eq.' + id
+            },
+            payload => {
+                if (!payload.new) return;
+                applyTimerRowV2(payload.new);
+            }
+        )
+        .subscribe();
+}
+
+/**
+ * Фолбэк-поллинг на случай обрыва realtime-канала (заблокированный
+ * экран, слабая мобильная сеть). Гость раз в 3 секунды дочитывает
+ * актуальное состояние из timer_state напрямую. Админ не поллит —
+ * он сам источник истины и так узнаёт об изменениях мгновенно.
+ */
+let lastTimerUpdatedAtV2 = null;
+
+async function pollTimerV2() {
+    if (state.isAdmin || !tournamentIdV2 || !supabaseClient) return;
+
+    const { data, error } = await supabaseClient
+        .from('timer_state')
+        .select('*')
+        .eq('tournament_id', tournamentIdV2)
+        .maybeSingle();
+
+    if (error || !data) return;
+    if (lastTimerUpdatedAtV2 && data.updated_at === lastTimerUpdatedAtV2) return;
+
+    lastTimerUpdatedAtV2 = data.updated_at;
+    applyTimerRowV2(data);
+}
+
+function startTimerPollingV2() {
+    setInterval(pollTimerV2, 3000);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) pollTimerV2();
+    });
+
+    window.addEventListener('online', pollTimerV2);
+    window.addEventListener('focus', pollTimerV2);
+}
+
+async function writeTimerToCloudV2() {
+    if (!supabaseClient || applyingRemote || !state.isAdmin) return;
+
+    const id = await ensureTournamentIdV2();
+    if (!id) return;
+
+    const t = state.timer;
+
+    const { error } = await supabaseClient
+        .from('timer_state')
+        .update({
+            current_level: t.currentLevel,
+            total_level_time: t.totalLevelTime,
+            target_end_time: t.targetEndTime ? new Date(t.targetEndTime).toISOString() : null,
+            is_running: t.isRunning,
+            is_paused: t.isPaused,
+            is_break: t.isBreak,
+            break_type: t.breakType,
+            tournament_started_at: t.tournamentStartedAt ? new Date(t.tournamentStartedAt).toISOString() : null,
+            tournament_ended: t.tournamentEnded,
+            updated_at: new Date().toISOString()
+        })
+        .eq('tournament_id', id);
+
+    if (error) {
+        console.error('v2: ошибка записи timer_state:', error);
+    }
+}
+
 async function initSupabase() {
     if (!supabaseConfigured()) {
         console.warn('Supabase не настроен');
@@ -225,8 +420,24 @@ async function initSupabase() {
 
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    // Восстанавливаем сессию админа, если она ещё жива (работает
+    // в любом браузере/устройстве после однократного входа).
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    state.isAdmin = !!sessionData?.session;
+
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+        handleAuthChange(session);
+    });
+
     await loadCloudInitial();
     subscribeCloud();
+
+    const id = await ensureTournamentIdV2();
+    if (id) {
+        await loadTimerFromCloudV2();
+        subscribeTimerV2(id);
+        startTimerPollingV2();
+    }
 
     cloudReady = true;
 }
@@ -280,7 +491,7 @@ async function loadCloudInitial() {
     const { data, error } = await supabaseClient
         .from('app_state')
         .select('key,value')
-        .in('key', ['timer', 'grid', 'settings', 'rules', 'registration']);
+        .in('key', ['grid', 'settings', 'rules', 'registration']);
 
     if (error) {
         console.error('Supabase read error:', error);
@@ -320,13 +531,7 @@ function subscribeCloud() {
 function applyCloudRow(row) {
     if (!row || !row.key) return;
 
-    if (row.key === 'timer') {
-        applyTimerData(row.value || {});
-        saveLocal('pokerTimerState', makeTimerData());
-        syncTimer(true);
-        updateTimerDisplay();
-        restartTimerIntervalIfNeeded();
-    }
+    // 'timer' больше не приходит через app_state — см. applyTimerRowV2 / timer_state.
 
     if (row.key === 'grid') {
         applyGridData(row.value || {});
@@ -452,7 +657,7 @@ function applySettingsData(data) {
 function saveTimerState() {
     const data = makeTimerData();
     saveLocal('pokerTimerState', data);
-    cloudSet('timer', data);
+    writeTimerToCloudV2();
 }
 
 function saveGridData() {
@@ -2985,25 +3190,31 @@ function resetAll() {
     $('loginBtn').onclick = () => $('loginModal').classList.add('active');
     $('cancelLoginBtn').onclick = () => $('loginModal').classList.remove('active');
 
-    $('confirmLoginBtn').onclick = () => {
+    $('confirmLoginBtn').onclick = async () => {
         const pass = $('adminPassword').value;
+        const btn = $('confirmLoginBtn');
 
-        if (pass === state.settings.adminPassword) {
-            state.isAdmin = true;
-            saveAdminState();
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'Проверка...';
+
+        const { error } = await adminLogin(pass);
+
+        btn.disabled = false;
+        btn.textContent = originalText;
+
+        if (!error) {
+            // state.isAdmin выставляется автоматически через onAuthStateChange,
+            // здесь только закрываем модалку.
             $('loginModal').classList.remove('active');
             $('adminPassword').value = '';
-            updateAdminUI();
-            renderTables();
         } else {
             alert('Неверный пароль');
         }
     };
 
-    $('logoutBtn').onclick = () => {
-        state.isAdmin = false;
-        saveAdminState();
-        updateAdminUI();
+    $('logoutBtn').onclick = async () => {
+        await adminLogout();
         showPage('timerPage');
     };
 
@@ -3055,7 +3266,7 @@ function resetAll() {
         saveSettingsData();
     };
 
-    $('changePasswordBtn').onclick = () => {
+    $('changePasswordBtn').onclick = async () => {
         const p1 = $('newPassword').value;
         const p2 = $('confirmPassword').value;
 
@@ -3064,8 +3275,17 @@ function resetAll() {
             return;
         }
 
-        state.settings.adminPassword = p1;
-        saveAdminState();
+        if (!supabaseClient || !state.isAdmin) {
+            alert('Нужно быть в системе как админ');
+            return;
+        }
+
+        const { error } = await supabaseClient.auth.updateUser({ password: p1 });
+
+        if (error) {
+            alert('Не удалось сменить пароль: ' + error.message);
+            return;
+        }
 
         $('newPassword').value = '';
         $('confirmPassword').value = '';
@@ -3107,8 +3327,6 @@ function resetAll() {
  ************************************************************/
 
 async function init() {
-    loadAdminState();
-
     const localTimer = loadLocal('pokerTimerState');
     if (localTimer) applyTimerData(localTimer);
 
@@ -3538,7 +3756,7 @@ init();
         if (modal) modal.classList.remove('active');
     }
 
-    function saveAdminPasswordFromModal() {
+    async function saveAdminPasswordFromModal() {
         if (!state.isAdmin) {
             alert('Только админ может менять пароль');
             return;
@@ -3557,12 +3775,16 @@ init();
             return;
         }
 
-        state.settings.adminPassword = p1;
+        if (!supabaseClient) {
+            alert('Supabase не готов, попробуйте ещё раз');
+            return;
+        }
 
-        if (typeof saveAdminState === 'function') {
-            saveAdminState();
-        } else {
-            localStorage.setItem('pokerTimerPassword', p1);
+        const { error } = await supabaseClient.auth.updateUser({ password: p1 });
+
+        if (error) {
+            alert('Не удалось сменить пароль: ' + error.message);
+            return;
         }
 
         closePasswordModal();
@@ -4131,563 +4353,6 @@ init();
 })();
 
 
-/* ============================================================
- * ADMIN PASSWORD CLOUD FIX (объединено из admin-password-cloud-fix.js)
- * ============================================================ */
-
-/************************************************************
- * ADMIN PASSWORD CLOUD FIX
- *
- * Что исправляет:
- * ✅ Пароль админа работает в новом браузере
- * ✅ Пароль админа работает в инкогнито
- * ✅ Пароль синхронизируется через Supabase
- * ✅ Старый localStorage-пароль переносится в облако
- *
- * Подключать ПОСЛЕ app.js и после admin-features-fix.js:
- *
- * <script src="app.js"></script>
- * <script src="sound-fix.js"></script>
- * <script src="admin-features-fix.js"></script>
- * <script src="admin-password-cloud-fix.js"></script>
- ************************************************************/
-
-(function () {
-    if (window.__ADMIN_PASSWORD_CLOUD_FIX_LOADED__) return;
-    window.__ADMIN_PASSWORD_CLOUD_FIX_LOADED__ = true;
-
-    console.log('Admin Password Cloud Fix loaded');
-
-    if (typeof state === 'undefined') {
-        console.error('admin-password-cloud-fix.js: state не найден. Подключи файл после app.js');
-        return;
-    }
-
-    if (!state.settings) state.settings = {};
-
-    /************************************************************
-     * DEFAULT PASSWORD INIT
-     ************************************************************/
-
-    function getLocalAdminPassword() {
-        return (
-            localStorage.getItem('pokerTimerPassword') ||
-            state.settings.adminPassword ||
-            'secret'
-        );
-    }
-
-    state.settings.adminPassword = getLocalAdminPassword();
-
-    /************************************************************
-     * PATCH makeSettingsData
-     * Добавляем adminPassword в объект настроек, который уходит в Supabase.
-     ************************************************************/
-
-    if (typeof makeSettingsData === 'function' && !window.__PASSWORD_FIX_MAKE_SETTINGS_PATCHED__) {
-        window.__PASSWORD_FIX_MAKE_SETTINGS_PATCHED__ = true;
-
-        const originalMakeSettingsData = makeSettingsData;
-
-        makeSettingsData = function () {
-            const data = originalMakeSettingsData();
-
-            data.adminPassword = state.settings.adminPassword || getLocalAdminPassword();
-
-            if (typeof state.settings.guestGridVisible !== 'undefined') {
-                data.guestGridVisible = state.settings.guestGridVisible !== false;
-            }
-
-            return data;
-        };
-
-        window.makeSettingsData = makeSettingsData;
-    }
-
-    /************************************************************
-     * PATCH applySettingsData
-     * Читаем adminPassword из Supabase.
-     ************************************************************/
-
-    if (typeof applySettingsData === 'function' && !window.__PASSWORD_FIX_APPLY_SETTINGS_PATCHED__) {
-        window.__PASSWORD_FIX_APPLY_SETTINGS_PATCHED__ = true;
-
-        const originalApplySettingsData = applySettingsData;
-
-        applySettingsData = function (data) {
-            originalApplySettingsData(data || {});
-
-            if (data && typeof data.adminPassword !== 'undefined' && data.adminPassword) {
-                state.settings.adminPassword = String(data.adminPassword);
-                localStorage.setItem('pokerTimerPassword', state.settings.adminPassword);
-            }
-
-            if (data && typeof data.guestGridVisible !== 'undefined') {
-                state.settings.guestGridVisible = data.guestGridVisible !== false;
-            }
-        };
-
-        window.applySettingsData = applySettingsData;
-    }
-
-    /************************************************************
-     * SUPABASE HELPERS
-     ************************************************************/
-
-    async function ensureSupabaseClient() {
-        if (supabaseClient) return supabaseClient;
-
-        if (!SUPABASE_URL || !SUPABASE_KEY) {
-            console.warn('Supabase URL/KEY отсутствуют');
-            return null;
-        }
-
-        if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-            console.warn('Supabase SDK не подключён');
-            return null;
-        }
-
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        return supabaseClient;
-    }
-
-    async function readCloudSettings() {
-        try {
-            const client = await ensureSupabaseClient();
-            if (!client) return null;
-
-            const { data, error } = await client
-                .from('app_state')
-                .select('key,value,updated_at')
-                .eq('key', 'settings')
-                .maybeSingle();
-
-            if (error) {
-                console.warn('Ошибка чтения settings из Supabase:', error);
-                return null;
-            }
-
-            if (!data || !data.value) return null;
-
-            if (typeof applySettingsData === 'function') {
-                applySettingsData(data.value);
-            }
-
-            if (typeof saveLocal === 'function') {
-                saveLocal('pokerSettings', {
-                    ...data.value,
-                    adminPassword: state.settings.adminPassword
-                });
-            } else {
-                localStorage.setItem('pokerSettings', JSON.stringify({
-                    ...data.value,
-                    adminPassword: state.settings.adminPassword
-                }));
-            }
-
-            return data.value;
-        } catch (err) {
-            console.warn('readCloudSettings error:', err);
-            return null;
-        }
-    }
-
-    async function writeCloudSettings() {
-        try {
-            const client = await ensureSupabaseClient();
-            if (!client) return;
-
-            const value = typeof makeSettingsData === 'function'
-                ? makeSettingsData()
-                : {
-                    primaryColor: state.settings.primaryColor,
-                    volume: state.settings.volume,
-                    totalPoints: state.settings.totalPoints,
-                    prizePlaces: state.settings.prizePlaces,
-                    tournament: state.tournament,
-                    guestGridVisible: state.settings.guestGridVisible !== false,
-                    adminPassword: state.settings.adminPassword || getLocalAdminPassword()
-                };
-
-            value.adminPassword = state.settings.adminPassword || getLocalAdminPassword();
-
-            const { error } = await client
-                .from('app_state')
-                .upsert({
-                    key: 'settings',
-                    value,
-                    updated_at: new Date().toISOString()
-                });
-
-            if (error) {
-                console.warn('Ошибка записи settings в Supabase:', error);
-                return;
-            }
-
-            console.log('Пароль админа сохранён в Supabase');
-        } catch (err) {
-            console.warn('writeCloudSettings error:', err);
-        }
-    }
-
-    /************************************************************
-     * PASSWORD SAVE
-     ************************************************************/
-
-    async function saveAdminPasswordEverywhere(password) {
-        password = String(password || '').trim();
-
-        if (!password) {
-            alert('Введите пароль');
-            return false;
-        }
-
-        state.settings.adminPassword = password;
-
-        localStorage.setItem('pokerTimerPassword', password);
-
-        try {
-            const localSettingsRaw = localStorage.getItem('pokerSettings');
-            const localSettings = localSettingsRaw ? JSON.parse(localSettingsRaw) : {};
-
-            localSettings.adminPassword = password;
-
-            if (typeof state.settings.guestGridVisible !== 'undefined') {
-                localSettings.guestGridVisible = state.settings.guestGridVisible !== false;
-            }
-
-            localStorage.setItem('pokerSettings', JSON.stringify(localSettings));
-        } catch {
-            localStorage.setItem('pokerSettings', JSON.stringify({
-                adminPassword: password
-            }));
-        }
-
-        await writeCloudSettings();
-
-        return true;
-    }
-
-    /************************************************************
-     * LOGIN FIX
-     ************************************************************/
-
-    /**
-     * Оборачиваем чтение пароля из облака в тайм-аут: на мобильной сети
-     * запрос может зависнуть надолго. Если за 4 секунды ответа нет —
-     * просто продолжаем с тем паролем, что уже есть локально,
-     * вместо того чтобы кнопка "Войти" молча ничего не делала.
-     */
-    function withTimeout(promise, ms) {
-        return Promise.race([
-            promise,
-            new Promise(resolve => setTimeout(() => resolve(null), ms))
-        ]);
-    }
-
-    async function loginWithCloudPassword() {
-        const btn = document.getElementById('confirmLoginBtn');
-        const input = document.getElementById('adminPassword');
-        const pass = input ? input.value : '';
-
-        const originalBtnText = btn ? btn.textContent : '';
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = 'Проверка...';
-        }
-
-        try {
-            /**
-             * Перед проверкой пароля читаем актуальный пароль из Supabase,
-             * но не дольше 4 секунд — иначе на слабой мобильной сети
-             * кнопка выглядит так, будто вообще не реагирует на нажатие.
-             */
-            await withTimeout(readCloudSettings(), 4000);
-
-            const correctPassword = state.settings.adminPassword || 'secret';
-
-            if (pass === correctPassword) {
-                state.isAdmin = true;
-
-                localStorage.setItem('pokerTimerIsAdmin', 'true');
-                localStorage.setItem('pokerTimerPassword', correctPassword);
-
-                if (typeof saveAdminState === 'function') {
-                    saveAdminState();
-                }
-
-                const modal = document.getElementById('loginModal');
-                if (modal) modal.classList.remove('active');
-
-                if (input) input.value = '';
-
-                if (typeof updateAdminUI === 'function') updateAdminUI();
-                if (typeof renderTables === 'function') renderTables();
-                if (typeof updateTimerDisplay === 'function') updateTimerDisplay();
-
-                /**
-                 * Если в Supabase ещё не было пароля, сохраняем текущий.
-                 * Тоже не блокируем интерфейс, если сеть подвисла.
-                 */
-                withTimeout(writeCloudSettings(), 4000);
-
-                console.log('Вход админа успешен');
-            } else {
-                alert('Неверный пароль');
-            }
-        } catch (err) {
-            console.warn('Login error:', err);
-            alert('Не удалось выполнить вход — проверьте соединение и попробуйте ещё раз');
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = originalBtnText || 'Войти';
-            }
-        }
-    }
-
-    window.loginWithCloudPassword = loginWithCloudPassword;
-
-    function patchLoginButton() {
-        const btn = document.getElementById('confirmLoginBtn');
-
-        if (btn && btn.dataset.passwordCloudFix !== '1') {
-            btn.dataset.passwordCloudFix = '1';
-
-            /**
-             * capture=true + stopImmediatePropagation
-             * блокирует старый обработчик входа, который проверял только localStorage.
-             */
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-
-                loginWithCloudPassword();
-            }, true);
-        }
-
-        const input = document.getElementById('adminPassword');
-
-        if (input && input.dataset.passwordCloudEnterFix !== '1') {
-            input.dataset.passwordCloudEnterFix = '1';
-
-            input.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-
-                    loginWithCloudPassword();
-                }
-            }, true);
-        }
-    }
-
-    /************************************************************
-     * CHANGE PASSWORD FIX
-     * Перехватывает старую кнопку из вкладки настроек.
-     ************************************************************/
-
-    async function changePasswordFromSettingsTab() {
-        if (!state.isAdmin) {
-            alert('Только админ может менять пароль');
-            return;
-        }
-
-        const p1 = document.getElementById('newPassword')?.value || '';
-        const p2 = document.getElementById('confirmPassword')?.value || '';
-
-        if (!p1.trim()) {
-            alert('Введите новый пароль');
-            return;
-        }
-
-        if (p1 !== p2) {
-            alert('Пароли не совпадают');
-            return;
-        }
-
-        const ok = await saveAdminPasswordEverywhere(p1);
-
-        if (!ok) return;
-
-        const input1 = document.getElementById('newPassword');
-        const input2 = document.getElementById('confirmPassword');
-
-        if (input1) input1.value = '';
-        if (input2) input2.value = '';
-
-        alert('Пароль изменён и сохранён в облако');
-    }
-
-    /************************************************************
-     * CHANGE PASSWORD FIX
-     * Перехватывает кнопку из admin-features-fix.js, если она подключена.
-     ************************************************************/
-
-    async function changePasswordFromAdminFeatureModal() {
-        if (!state.isAdmin) {
-            alert('Только админ может менять пароль');
-            return;
-        }
-
-        const p1 = document.getElementById('adminFeatureNewPassword')?.value || '';
-        const p2 = document.getElementById('adminFeatureConfirmPassword')?.value || '';
-
-        if (!p1.trim()) {
-            alert('Введите новый пароль');
-            return;
-        }
-
-        if (p1 !== p2) {
-            alert('Пароли не совпадают');
-            return;
-        }
-
-        const ok = await saveAdminPasswordEverywhere(p1);
-
-        if (!ok) return;
-
-        const input1 = document.getElementById('adminFeatureNewPassword');
-        const input2 = document.getElementById('adminFeatureConfirmPassword');
-        const modal = document.getElementById('adminPasswordFixModal');
-
-        if (input1) input1.value = '';
-        if (input2) input2.value = '';
-        if (modal) modal.classList.remove('active');
-
-        alert('Пароль изменён и сохранён в облако');
-    }
-
-    function patchChangePasswordButtons() {
-        /**
-         * Делегированный обработчик.
-         * Работает даже если кнопка появилась позже.
-         */
-        if (window.__PASSWORD_FIX_CHANGE_BUTTONS_PATCHED__) return;
-        window.__PASSWORD_FIX_CHANGE_BUTTONS_PATCHED__ = true;
-
-        document.addEventListener('click', function (e) {
-            const target = e.target;
-
-            if (!target) return;
-
-            if (target.id === 'changePasswordBtn') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-
-                changePasswordFromSettingsTab();
-                return;
-            }
-
-            if (target.id === 'adminPasswordFixSaveBtn') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-
-                changePasswordFromAdminFeatureModal();
-                return;
-            }
-        }, true);
-    }
-
-    /************************************************************
-     * PATCH saveAdminState
-     ************************************************************/
-
-    if (typeof saveAdminState === 'function' && !window.__PASSWORD_FIX_SAVE_ADMIN_PATCHED__) {
-        window.__PASSWORD_FIX_SAVE_ADMIN_PATCHED__ = true;
-
-        const originalSaveAdminState = saveAdminState;
-
-        saveAdminState = function () {
-            originalSaveAdminState();
-
-            localStorage.setItem('pokerTimerPassword', state.settings.adminPassword || getLocalAdminPassword());
-
-            if (state.isAdmin) {
-                writeCloudSettings();
-            }
-        };
-
-        window.saveAdminState = saveAdminState;
-    }
-
-    /************************************************************
-     * PATCH applyCloudRow
-     ************************************************************/
-
-    if (typeof applyCloudRow === 'function' && !window.__PASSWORD_FIX_APPLY_CLOUD_PATCHED__) {
-        window.__PASSWORD_FIX_APPLY_CLOUD_PATCHED__ = true;
-
-        const originalApplyCloudRow = applyCloudRow;
-
-        applyCloudRow = function (row) {
-            originalApplyCloudRow(row);
-
-            try {
-                if (row && row.key === 'settings' && row.value) {
-                    if (typeof row.value.adminPassword !== 'undefined' && row.value.adminPassword) {
-                        state.settings.adminPassword = String(row.value.adminPassword);
-                        localStorage.setItem('pokerTimerPassword', state.settings.adminPassword);
-                    }
-                }
-            } catch (err) {
-                console.warn('Password cloud applyCloudRow error:', err);
-            }
-        };
-
-        window.applyCloudRow = applyCloudRow;
-    }
-
-    /************************************************************
-     * BOOTSTRAP
-     ************************************************************/
-
-    async function bootstrapPasswordCloudFix() {
-        patchLoginButton();
-        patchChangePasswordButtons();
-
-        /**
-         * Сначала читаем пароль из облака.
-         */
-        const cloudSettings = await readCloudSettings();
-
-        /**
-         * Если пользователь уже админ в этом браузере,
-         * но в облаке ещё нет adminPassword —
-         * переносим локальный пароль в Supabase.
-         */
-        if (state.isAdmin) {
-            const cloudHasPassword = cloudSettings && cloudSettings.adminPassword;
-
-            if (!cloudHasPassword) {
-                state.settings.adminPassword = getLocalAdminPassword();
-                await writeCloudSettings();
-                console.log('Локальный пароль админа перенесён в Supabase');
-            }
-        }
-
-        patchLoginButton();
-
-        console.log('Admin Password Cloud Fix applied');
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            bootstrapPasswordCloudFix();
-
-            setTimeout(bootstrapPasswordCloudFix, 500);
-            setTimeout(bootstrapPasswordCloudFix, 1500);
-            setTimeout(bootstrapPasswordCloudFix, 3000);
-        });
-    } else {
-        bootstrapPasswordCloudFix();
-
-        setTimeout(bootstrapPasswordCloudFix, 500);
-        setTimeout(bootstrapPasswordCloudFix, 1500);
-        setTimeout(bootstrapPasswordCloudFix, 3000);
-    }
-
-})();
 
 /* ============================================================
  * STABLE SOUND FIX (объединено из sound-fix.js)
@@ -5300,144 +4965,3 @@ init();
 
 })();
 
-
-/* ============================================================
- * TIMER CLOUD SYNC FIX (объединено из timer-sync-fix.js)
- * ============================================================ */
-
-/************************************************************
- * TIMER CLOUD SYNC FIX
- *
- * ПРОБЛЕМА:
- * У гостей таймер обновлялся только через Supabase Realtime
- * (WebSocket-подписка в subscribeCloud()). Если сокет обрывается —
- * экран телефона заблокировался, вкладка свернулась в фон,
- * просела сеть на турнире — событие Realtime теряется без следа.
- * Ничего его не подхватывает, пока канал сам не переподключится,
- * из-за чего таймер у гостей "зависает", запускается с большой
- * задержкой или не реагирует на паузу вовсе.
- *
- * У блока 'settings' уже был запасной поллинг на такой случай
- * (см. admin-features-fix.js -> loadSettingsFromCloudForGuestGrid),
- * а у 'timer' — не было. Этот файл добавляет то же самое для timer:
- * гость раз в 2 секунды дочитывает актуальное состояние таймера
- * напрямую из базы, независимо от того, жив realtime-канал или нет.
- *
- * v2: добавлены подробные console.log, чтобы можно было увидеть
- * в консоли браузера, реально ли работает поллинг и что он видит.
- ************************************************************/
-
-(function () {
-    if (window.__TIMER_SYNC_FIX_PATCHED__) return;
-    window.__TIMER_SYNC_FIX_PATCHED__ = true;
-
-    console.log('Timer Sync Fix loaded');
-
-    let lastTimerUpdatedAt = null;
-    let pollingStarted = false;
-    let pollCount = 0;
-
-    async function pollTimerFromCloud() {
-        pollCount++;
-
-        try {
-            // Админ — источник истины сам по себе, ему поллинг не нужен.
-            if (state.isAdmin) {
-                if (pollCount % 5 === 0) {
-                    console.log('Timer poll skipped: this device is admin');
-                }
-                return;
-            }
-
-            if (!supabaseClient) {
-                console.log('Timer poll skipped: supabaseClient not ready yet');
-                return;
-            }
-
-            const { data, error } = await supabaseClient
-                .from('app_state')
-                .select('key,value,updated_at')
-                .eq('key', 'timer')
-                .maybeSingle();
-
-            if (error) {
-                console.warn('Timer polling read error:', error);
-                return;
-            }
-
-            if (!data || !data.value) {
-                console.log('Timer poll: no data returned from app_state');
-                return;
-            }
-
-            // Раз в несколько тиков печатаем "пульс", чтобы видеть,
-            // что поллинг реально работает, даже если данные не менялись.
-            if (pollCount % 5 === 0) {
-                console.log(
-                    'Timer poll heartbeat — cloud isRunning:', data.value.isRunning,
-                    '| isPaused:', data.value.isPaused,
-                    '| level:', data.value.currentLevel,
-                    '| updated_at:', data.updated_at,
-                    '| local isRunning:', state.timer.isRunning
-                );
-            }
-
-            // Ничего не изменилось с прошлого раза — пропускаем,
-            // чтобы не дёргать applyCloudRow впустую.
-            if (lastTimerUpdatedAt && data.updated_at === lastTimerUpdatedAt) return;
-
-            lastTimerUpdatedAt = data.updated_at;
-
-            console.log(
-                'Timer poll: CHANGE DETECTED, applying ->',
-                'isRunning:', data.value.isRunning,
-                '| isPaused:', data.value.isPaused,
-                '| updated_at:', data.updated_at
-            );
-
-            if (typeof applyCloudRow === 'function') {
-                applyingRemote = true;
-                applyCloudRow({ key: 'timer', value: data.value });
-                applyingRemote = false;
-            }
-        } catch (err) {
-            console.warn('Timer polling error:', err);
-        }
-    }
-
-    function startTimerPolling() {
-        if (pollingStarted) return;
-        pollingStarted = true;
-
-        console.log('Timer polling started (every 2s)');
-
-        setInterval(pollTimerFromCloud, 2000);
-        pollTimerFromCloud();
-    }
-
-    function boot() {
-        startTimerPolling();
-
-        // Как только устройство "проснулось" (вернулись в приложение,
-        // разблокировали телефон, восстановился интернет) —
-        // сразу же принудительно подтягиваем актуальное состояние,
-        // не дожидаясь ближайшего тика поллинга.
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) pollTimerFromCloud();
-        });
-
-        window.addEventListener('online', pollTimerFromCloud);
-        window.addEventListener('focus', pollTimerFromCloud);
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
-    } else {
-        boot();
-    }
-
-    // На случай, если supabaseClient создаётся с задержкой
-    // (initSupabase ещё не успел отработать к моменту загрузки этого файла).
-    setTimeout(boot, 800);
-    setTimeout(boot, 2000);
-})();
