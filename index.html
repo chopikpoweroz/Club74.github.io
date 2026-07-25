@@ -62,7 +62,7 @@
          * HUB (главная страница)
          * ============================================================ */
 
-        body.on-hub .header-nav-group {
+        .header-nav-group {
             display: none !important;
         }
 
@@ -1962,8 +1962,9 @@
         <div class="user-info">
     	<span class="user-role" id="userRole"> </span>
 
-    	<div class="header-nav-group" id="headerNavGroup">
     	<button class="btn nav-btn" data-page="hubPage">🏠 Главная</button>
+
+    	<div class="header-nav-group" id="headerNavGroup">
     	<button class="btn" id="leagueBtn" onclick="window.location.href='League.html'">♠ Лига 4покеристов</button>
     	<button class="btn btn-success" id="playersBtn" onclick="window.location.href='players.html'">🏆 Рейтинг</button>
 
@@ -2096,7 +2097,7 @@
             <div class="admin-panel">
                 <div class="admin-header">
                     <h2>⚙️ Панель редактора</h2>
-                    <button class="btn btn-secondary nav-btn" data-page="timerPage">← Назад к таймеру</button>
+                    <button class="btn btn-secondary nav-btn" data-page="hubPage">← На главную</button>
                 </div>
                 <div class="admin-tabs">
                     <button class="admin-tab active" data-tab="templates">Шаблоны</button>
@@ -2312,7 +2313,8 @@
                     <div class="grid-timer-time" id="gridTimerDisplay">15:00</div>
                 </div>
                 <button class="btn btn-success" id="gridGuestRegisterBtn" style="display:none;">📝 Зарегистрироваться</button>
-                <button class="btn btn-secondary nav-btn" data-page="timerPage">← Назад к таймеру</button>
+                <button class="btn btn-warning nav-btn" data-page="rulesPage">📜 Правила</button>
+                <button class="btn btn-secondary nav-btn" data-page="hubPage">← На главную</button>
             </div>
 
             <div class="player-registration" id="playerRegistrationSection">
@@ -2374,7 +2376,7 @@
             <div class="rating-list" id="ratingList"></div>
             <div class="rating-actions">
                 <button class="btn btn-success" id="saveRatingJpgBtn">📸 Сохранить в JPG</button>
-                <button class="btn btn-secondary nav-btn" data-page="timerPage">← Назад к таймеру</button>
+                <button class="btn btn-secondary nav-btn" data-page="hubPage">← На главную</button>
             </div>
         </div>
     </div>
