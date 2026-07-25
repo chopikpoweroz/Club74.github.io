@@ -74,7 +74,11 @@
             display: none !important;
         }
 
-        body.on-timer .header {
+        body.on-timer:not(.is-admin) .header {
+            display: none !important;
+        }
+
+        body.on-timer.is-admin #timerFooterAuth {
             display: none !important;
         }
 
@@ -506,12 +510,18 @@
 
         .timer-time {
             text-align: center;
-            font-size: clamp(64px, 10vw, 96px);
-            font-weight: bold;
-            color: white;
+            font-size: clamp(64px, 15vw, 140px);
+            font-weight: 800;
+            color: #fbe9c0;
             margin: 20px 0;
             font-family: 'Courier New', monospace;
-            text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+            letter-spacing: 0.02em;
+            text-shadow:
+                0 1px 0 #8a6a1f,
+                0 2px 0 #7c5d16,
+                0 3px 0 #6b4f12,
+                0 4px 6px rgba(0,0,0,0.5),
+                0 0 40px rgba(212,175,55,0.35);
         }
 
         .progress-container {
@@ -1423,7 +1433,7 @@
 
         @media (max-width: 768px) {
             .timer-time {
-                font-size: 48px;
+                font-size: clamp(48px, 16vw, 72px);
             }
 
             .blinds-display {
@@ -1463,7 +1473,7 @@
 	
         @media (max-width: 480px) {
             .timer-time {
-                font-size: 36px;
+                font-size: clamp(38px, 17vw, 52px);
             }
 
             .blinds-display {
