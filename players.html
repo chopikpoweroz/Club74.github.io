@@ -46,6 +46,37 @@
 
     .user-role { background: var(--secondary-color); padding: 5px 15px; border-radius: 20px; font-size: 14px; }
 
+    .hub-footer-auth {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 24px 0;
+        opacity: 0.85;
+    }
+
+    .hub-footer-auth button {
+        font-size: 12px;
+        padding: 6px 14px;
+        background: rgba(255,255,255,0.08);
+        color: rgba(232,199,102,0.55);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px;
+        font-weight: 400;
+        cursor: pointer;
+    }
+
+    .hub-footer-auth button:hover {
+        background: rgba(255,255,255,0.14);
+        color: rgba(232,199,102,0.85);
+    }
+
+    .hub-footer-auth .user-role {
+        font-size: 12px;
+        opacity: 0.6;
+        background: transparent;
+    }
+
     .btn {
         padding: 12px 24px;
         border: none;
@@ -162,15 +193,21 @@
 </head>
 <body>
 
-<div class="header">
+<div class="header" id="pageHeader">
     <div class="logo">🃏 Poker Timer</div>
     <div class="user-info">
         <span class="user-role" id="userRole"> </span>
-        <button class="btn btn-secondary" onclick="window.location.href='index.html'">Вернуться</button>
+        <button class="btn btn-secondary" onclick="window.location.href='index.html'">🏠 На главную</button>
         <button class="btn" id="leagueBtn" onclick="window.location.href='League.html'">♠ Лига 4покеристов</button>
         <button class="btn btn-primary" id="loginBtn">Вход</button>
         <button class="btn btn-secondary" id="logoutBtn" style="display:none;">Выход</button>
     </div>
+</div>
+
+<div class="hub-footer-auth" id="guestFooterAuth" style="display:none;">
+    <button class="btn" onclick="window.location.href='index.html'">🏠 На главную</button>
+    <span class="user-role" id="guestFooterRole">Гость</span>
+    <button class="btn" id="guestFooterLoginBtn">Вход для админа</button>
 </div>
 
 <div class="container">
@@ -498,6 +535,12 @@ function updateAuthUI() {
     $('loginBtn').style.display = isAdmin ? 'none' : 'inline-block';
     $('logoutBtn').style.display = isAdmin ? 'inline-block' : 'none';
     $('exportPlayersBtn').style.display = isAdmin ? 'inline-block' : 'none';
+
+    // Полная шапка — только для админа (там рабочие кнопки).
+    // Гостю показываем только маленькую незаметную строку внизу.
+    $('pageHeader').style.display = isAdmin ? 'flex' : 'none';
+    $('guestFooterAuth').style.display = isAdmin ? 'none' : 'flex';
+
     applyRegistrationVisibility();
     renderTable();
 }
@@ -651,6 +694,13 @@ $('loginBtn').onclick = () => {
     $('adminPasswordInput').value = '';
     $('loginModal').classList.add('active');
 };
+
+if ($('guestFooterLoginBtn')) {
+    $('guestFooterLoginBtn').onclick = () => {
+        $('adminPasswordInput').value = '';
+        $('loginModal').classList.add('active');
+    };
+}
 
 $('cancelLoginBtn').onclick = () => $('loginModal').classList.remove('active');
 
