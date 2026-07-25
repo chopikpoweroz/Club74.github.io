@@ -58,6 +58,117 @@
             flex-wrap: wrap;
         }
 
+        /* ============================================================
+         * HUB (главная страница)
+         * ============================================================ */
+
+        .hub-wrap {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: clamp(20px, 4vw, 50px) 20px 60px;
+        }
+
+        .hub-hero {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: linear-gradient(135deg, var(--card-bg), var(--bg-color));
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: clamp(24px, 4vw, 40px);
+            margin-bottom: clamp(24px, 4vw, 40px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        }
+
+        .hub-hero-avatar {
+            flex: 0 0 auto;
+            width: clamp(72px, 10vw, 96px);
+            height: clamp(72px, 10vw, 96px);
+            border-radius: 20px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(34px, 5vw, 46px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+        }
+
+        .hub-hero-text h1 {
+            font-size: clamp(22px, 4vw, 32px);
+            margin-bottom: 6px;
+            color: var(--text-color);
+        }
+
+        .hub-hero-text p {
+            color: var(--text-muted);
+            font-size: clamp(13px, 2vw, 15px);
+        }
+
+        .hub-tiles {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .hub-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            cursor: pointer;
+            text-align: left;
+            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            color: var(--text-color);
+            font-family: inherit;
+        }
+
+        .hub-tile:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary-color);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+        }
+
+        .hub-tile-icon {
+            font-size: 30px;
+        }
+
+        .hub-tile-title {
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .hub-tile-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .hub-admin-section {
+            margin-top: clamp(24px, 4vw, 40px);
+            padding-top: clamp(20px, 3vw, 30px);
+            border-top: 1px dashed var(--border-color);
+        }
+
+        .hub-admin-label {
+            color: var(--warning-color);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        .hub-tile-admin {
+            border-color: rgba(255,165,0,0.25);
+        }
+
+        .hub-tile-admin:hover {
+            border-color: var(--warning-color);
+        }
+
         .user-role {
             background: var(--secondary-color);
             padding: 5px 15px;
@@ -1621,8 +1732,9 @@
         <div class="user-info">
     	<span class="user-role" id="userRole"> </span>
 
+    	<button class="btn nav-btn" data-page="hubPage">🏠 Главная</button>
     	<button class="btn" id="leagueBtn" onclick="window.location.href='League.html'">♠ Лига 4покеристов</button>
-    	<button class="btn btn-success" id="playersBtn" onclick="window.location.href='players.html'">👥 Регистрация</button>
+    	<button class="btn btn-success" id="playersBtn" onclick="window.location.href='players.html'">👥 Участники клуба</button>
 
     	<button class="btn btn-warning nav-btn" data-page="ratingPage" id="ratingBtn">🏆 Результаты</button>
     	<button class="btn btn-success nav-btn" data-page="gridPage" id="gridBtn">📊 Сетка</button>
@@ -1632,7 +1744,68 @@
         </div>
     </div>
 
-    <div class="page active" id="timerPage">
+    <div class="page active" id="hubPage">
+        <div class="hub-wrap">
+            <div class="hub-hero">
+                <div class="hub-hero-avatar">🃏</div>
+                <div class="hub-hero-text">
+                    <h1>Poker Timer</h1>
+                    <p>Клуб «Чпокеристы» — таймер турниров, сетка, правила и участники в одном месте</p>
+                </div>
+            </div>
+
+            <div class="hub-tiles">
+                <button class="hub-tile nav-btn" data-page="timerPage">
+                    <span class="hub-tile-icon">🃏</span>
+                    <span class="hub-tile-title">Poker Timer</span>
+                    <span class="hub-tile-desc">Таймер уровней турнира</span>
+                </button>
+
+                <button class="hub-tile nav-btn" data-page="gridPage">
+                    <span class="hub-tile-icon">📊</span>
+                    <span class="hub-tile-title">Сетка</span>
+                    <span class="hub-tile-desc">Столы и рассадка участников</span>
+                </button>
+
+                <button class="hub-tile" onclick="window.location.href='Rules.html'">
+                    <span class="hub-tile-icon">📜</span>
+                    <span class="hub-tile-title">Правила</span>
+                    <span class="hub-tile-desc">Регламент турниров клуба</span>
+                </button>
+
+                <button class="hub-tile" id="hubRegisterTile">
+                    <span class="hub-tile-icon">📝</span>
+                    <span class="hub-tile-title">Регистрация</span>
+                    <span class="hub-tile-desc">Записаться на турнир</span>
+                </button>
+            </div>
+
+            <div class="hub-admin-section" id="hubAdminSection" style="display:none;">
+                <div class="hub-admin-label">Панель администратора</div>
+                <div class="hub-tiles hub-tiles-admin">
+                    <button class="hub-tile hub-tile-admin nav-btn" data-page="tournamentPage">
+                        <span class="hub-tile-icon">⚙️</span>
+                        <span class="hub-tile-title">Турнир</span>
+                        <span class="hub-tile-desc">Финальный стол, завершение</span>
+                    </button>
+
+                    <button class="hub-tile hub-tile-admin nav-btn" data-page="editorPage">
+                        <span class="hub-tile-icon">🎛</span>
+                        <span class="hub-tile-title">Редактор</span>
+                        <span class="hub-tile-desc">Шаблоны, звук, настройки</span>
+                    </button>
+
+                    <button class="hub-tile hub-tile-admin nav-btn" data-page="ratingPage">
+                        <span class="hub-tile-icon">🏆</span>
+                        <span class="hub-tile-title">Результаты</span>
+                        <span class="hub-tile-desc">Таблица итогов турнира</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="timerPage">
         <div class="container">
             <div class="timer-wrapper">
                 <div class="level-display" id="levelDisplay">УРОВЕНЬ <span id="currentLevel">1</span></div>
