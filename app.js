@@ -429,137 +429,238 @@ async function initSupabase() {
         handleAuthChange(session);
     });
 
-    await loadCloudInitial();
-    subscribeCloud();
-
     const id = await ensureTournamentIdV2();
     if (id) {
         await loadTimerFromCloudV2();
         subscribeTimerV2(id);
         startTimerPollingV2();
+
+        await loadGridFromCloudV2();
+        subscribeGridV2(id);
+        startGridPollingV2();
+
+        await loadSettingsFromCloudV2();
+        subscribeSettingsV2(id);
+        startSettingsPollingV2();
     }
 
     cloudReady = true;
 }
 
-async function cloudSet(key, value) {
-    if (!supabaseClient || !cloudReady || applyingRemote) return;
+/************************************************************
+ * v2 GRID SYNC (таблица grid_state — весь снимок сетки одним
+ * JSON, как раньше, но в своей таблице вместо общей app_state.
+ * Внутренняя структура и id игроков/столов не меняются —
+ * поэтому createGrid/movePlayer/eliminatePlayer и т.д. трогать
+ * не нужно, меняется только персистентность.)
+ ************************************************************/
 
-    /**
-     * Пишет только админ.
-     * Гости только читают.
-     */
-    if (!state.isAdmin) return;
+function applyGridRowV2(row) {
+    if (!row) return;
 
-    const { error } = await supabaseClient
-        .from('app_state')
-        .upsert({
-            key,
-            value,
-            updated_at: new Date().toISOString()
-        });
+    applyingRemote = true;
+    applyGridData(row.data || {});
+    applyingRemote = false;
 
-    if (error) {
-        console.error('Supabase write error:', error);
-    }
+    saveLocal('pokerGridData', makeGridData());
+    renderPlayerList();
+    renderTables();
+    renderRating();
 }
 
-async function cloudSetForce(key, value) {
-    /**
-     * Используется для действий гостя, которые должны быть видны всем
-     * (например, саморегистрация участника). В отличие от cloudSet,
-     * не проверяет права админа.
-     */
-    if (!supabaseClient || !cloudReady) return;
-
-    const { error } = await supabaseClient
-        .from('app_state')
-        .upsert({
-            key,
-            value,
-            updated_at: new Date().toISOString()
-        });
-
-    if (error) {
-        console.error('Supabase write error:', error);
-    }
-}
-
-async function loadCloudInitial() {
-    if (!supabaseClient) return;
+async function loadGridFromCloudV2() {
+    const id = await ensureTournamentIdV2();
+    if (!id || !supabaseClient) return;
 
     const { data, error } = await supabaseClient
-        .from('app_state')
-        .select('key,value')
-        .in('key', ['grid', 'settings', 'rules', 'registration']);
+        .from('grid_state')
+        .select('*')
+        .eq('tournament_id', id)
+        .maybeSingle();
 
     if (error) {
-        console.error('Supabase read error:', error);
+        console.error('v2: ошибка чтения grid_state:', error);
         return;
     }
 
-    applyingRemote = true;
-
-    for (const row of data || []) {
-        applyCloudRow(row);
-    }
-
-    applyingRemote = false;
+    if (data) applyGridRowV2(data);
 }
 
-function subscribeCloud() {
+function subscribeGridV2(id) {
     supabaseClient
-        .channel('poker_timer_app_state')
+        .channel('poker_timer_v2_grid_state')
         .on(
             'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'app_state'
-            },
+            { event: '*', schema: 'public', table: 'grid_state', filter: 'tournament_id=eq.' + id },
             payload => {
                 if (!payload.new) return;
-
-                applyingRemote = true;
-                applyCloudRow(payload.new);
-                applyingRemote = false;
+                applyGridRowV2(payload.new);
             }
         )
         .subscribe();
 }
 
-function applyCloudRow(row) {
-    if (!row || !row.key) return;
+let lastGridUpdatedAtV2 = null;
 
-    // 'timer' больше не приходит через app_state — см. applyTimerRowV2 / timer_state.
+async function pollGridV2() {
+    if (!tournamentIdV2 || !supabaseClient) return;
 
-    if (row.key === 'grid') {
-        applyGridData(row.value || {});
-        saveLocal('pokerGridData', makeGridData());
-        renderPlayerList();
-        renderTables();
-        renderRating();
+    const { data, error } = await supabaseClient
+        .from('grid_state')
+        .select('*')
+        .eq('tournament_id', tournamentIdV2)
+        .maybeSingle();
+
+    if (error || !data) return;
+    if (lastGridUpdatedAtV2 && data.updated_at === lastGridUpdatedAtV2) return;
+
+    lastGridUpdatedAtV2 = data.updated_at;
+    applyGridRowV2(data);
+}
+
+function startGridPollingV2() {
+    setInterval(pollGridV2, 3000);
+}
+
+/**
+ * Пишет весь снимок сетки. Может вызываться и гостем
+ * (саморегистрация) — RLS на grid_state разрешает это отдельной
+ * политикой (как раньше cloudSetForce обходил проверку isAdmin).
+ */
+async function writeGridToCloudV2() {
+    if (!supabaseClient || applyingRemote) return;
+
+    const id = await ensureTournamentIdV2();
+    if (!id) return;
+
+    const { error } = await supabaseClient
+        .from('grid_state')
+        .update({ data: makeGridData(), updated_at: new Date().toISOString() })
+        .eq('tournament_id', id);
+
+    if (error) {
+        console.error('v2: ошибка записи grid_state:', error);
+    }
+}
+
+/************************************************************
+ * v2 SETTINGS SYNC (таблица settings — структурированные поля
+ * вместо ключа 'settings' в app_state; туда же вшиты правила
+ * турнира и текст соглашения при регистрации, чтобы не плодить
+ * отдельные таблицы под два текстовых поля).
+ ************************************************************/
+
+function settingsRowToData(row) {
+    return {
+        primaryColor: row.primary_color,
+        volume: row.volume,
+        totalPoints: row.total_points,
+        prizePlaces: row.prize_places,
+        tournament: row.tournament_meta || {},
+        guestGridVisible: row.guest_grid_visible !== false,
+        guestRegistrationVisible: row.guest_registration_visible !== false
+    };
+}
+
+function applySettingsRowV2(row) {
+    if (!row) return;
+
+    applyingRemote = true;
+    applySettingsData(settingsRowToData(row));
+
+    state.rules.text = String(row.rules_text || state.rules.text || '');
+    state.registration.agreementText = String(row.registration_text || state.registration.agreementText || '');
+    applyingRemote = false;
+
+    updateSettingsUI();
+    renderRating();
+    renderRulesPage();
+
+    if ($('registrationAgreementModal') && $('registrationAgreementModal').classList.contains('active')) {
+        renderRegistrationAgreement();
+    }
+}
+
+async function loadSettingsFromCloudV2() {
+    const id = await ensureTournamentIdV2();
+    if (!id || !supabaseClient) return;
+
+    const { data, error } = await supabaseClient
+        .from('settings')
+        .select('*')
+        .eq('tournament_id', id)
+        .maybeSingle();
+
+    if (error) {
+        console.error('v2: ошибка чтения settings:', error);
+        return;
     }
 
-    if (row.key === 'settings') {
-        applySettingsData(row.value || {});
-        updateSettingsUI();
-        renderRating();
-    }
+    if (data) applySettingsRowV2(data);
+}
 
-    if (row.key === 'rules') {
-        state.rules.text = String(row.value?.text || '');
-        localStorage.setItem('pokerRulesText', state.rules.text);
-        renderRulesPage();
-    }
+function subscribeSettingsV2(id) {
+    supabaseClient
+        .channel('poker_timer_v2_settings')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'settings', filter: 'tournament_id=eq.' + id },
+            payload => {
+                if (!payload.new) return;
+                applySettingsRowV2(payload.new);
+            }
+        )
+        .subscribe();
+}
 
-    if (row.key === 'registration') {
-        state.registration.agreementText = String(row.value?.text || '');
-        localStorage.setItem('pokerRegistrationText', state.registration.agreementText);
+let lastSettingsUpdatedAtV2 = null;
 
-        if ($('registrationAgreementModal') && $('registrationAgreementModal').classList.contains('active')) {
-            renderRegistrationAgreement();
-        }
+async function pollSettingsV2() {
+    if (state.isAdmin || !tournamentIdV2 || !supabaseClient) return;
+
+    const { data, error } = await supabaseClient
+        .from('settings')
+        .select('*')
+        .eq('tournament_id', tournamentIdV2)
+        .maybeSingle();
+
+    if (error || !data) return;
+    if (lastSettingsUpdatedAtV2 && data.updated_at === lastSettingsUpdatedAtV2) return;
+
+    lastSettingsUpdatedAtV2 = data.updated_at;
+    applySettingsRowV2(data);
+}
+
+function startSettingsPollingV2() {
+    setInterval(pollSettingsV2, 3000);
+}
+
+async function writeSettingsToCloudV2() {
+    if (!supabaseClient || applyingRemote || !state.isAdmin) return;
+
+    const id = await ensureTournamentIdV2();
+    if (!id) return;
+
+    const data = makeSettingsData();
+
+    const { error } = await supabaseClient
+        .from('settings')
+        .update({
+            primary_color: data.primaryColor,
+            volume: data.volume,
+            total_points: data.totalPoints,
+            prize_places: data.prizePlaces,
+            tournament_meta: data.tournament,
+            guest_grid_visible: data.guestGridVisible !== false,
+            guest_registration_visible: data.guestRegistrationVisible !== false,
+            rules_text: state.rules.text,
+            registration_text: state.registration.agreementText,
+            updated_at: new Date().toISOString()
+        })
+        .eq('tournament_id', id);
+
+    if (error) {
+        console.error('v2: ошибка записи settings:', error);
     }
 }
 
@@ -663,13 +764,13 @@ function saveTimerState() {
 function saveGridData() {
     const data = makeGridData();
     saveLocal('pokerGridData', data);
-    cloudSet('grid', data);
+    writeGridToCloudV2();
 }
 
 function saveSettingsData() {
     const data = makeSettingsData();
     saveLocal('pokerSettings', data);
-    cloudSet('settings', data);
+    writeSettingsToCloudV2();
 }
 
 /************************************************************
@@ -1924,10 +2025,7 @@ function saveRules() {
     state.rules.text = $('rulesEditor').value.trim();
     localStorage.setItem('pokerRulesText', state.rules.text);
 
-    cloudSet('rules', {
-        text: state.rules.text,
-        updatedAt: new Date().toISOString()
-    });
+    writeSettingsToCloudV2();
 
     alert('Правила сохранены');
 }
@@ -2032,10 +2130,7 @@ function saveRegistrationAgreement() {
     state.registration.agreementText = $('registrationAgreementEditor').value.trim();
     localStorage.setItem('pokerRegistrationText', state.registration.agreementText);
 
-    cloudSet('registration', {
-        text: state.registration.agreementText,
-        updatedAt: new Date().toISOString()
-    });
+    writeSettingsToCloudV2();
 
     alert('Текст соглашения сохранён');
 }
@@ -2073,7 +2168,7 @@ function submitRegistration() {
     });
 
     saveLocal('pokerGridData', makeGridData());
-    cloudSetForce('grid', makeGridData());
+    writeGridToCloudV2();
 
     nameInput.value = '';
     $('registrationFormModal').classList.remove('active');
@@ -3028,10 +3123,7 @@ function saveTournamentRules() {
 
     localStorage.setItem('pokerRulesText', state.rules.text);
 
-    cloudSet('rules', {
-        text: state.rules.text,
-        updatedAt: new Date().toISOString()
-    });
+    writeSettingsToCloudV2();
 
     alert('Правила сохранены');
 }
@@ -3468,7 +3560,7 @@ init();
             const t0 = Date.now();
 
             const res = await fetch(
-                `${SUPABASE_URL}/rest/v1/app_state?select=key&limit=1`,
+                `${SUPABASE_URL}/rest/v1/tournaments?select=id&limit=1`,
                 {
                     method: 'GET',
                     headers: {
@@ -4204,75 +4296,12 @@ init();
     let settingsPollingStarted = false;
 
     async function loadSettingsFromCloudForGuestGrid() {
-        try {
-            if (state.isAdmin) return;
-
-            if (!SUPABASE_URL || !SUPABASE_KEY) return;
-
-            if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-                return;
-            }
-
-            if (!supabaseClient) {
-                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-            }
-
-            const { data, error } = await supabaseClient
-                .from('app_state')
-                .select('key,value,updated_at')
-                .eq('key', 'settings')
-                .maybeSingle();
-
-            if (error) {
-                console.warn('Guest grid visibility settings read error:', error);
-                return;
-            }
-
-            if (!data || !data.value) return;
-
-            if (lastSettingsUpdatedAt && data.updated_at === lastSettingsUpdatedAt) {
-                return;
-            }
-
-            lastSettingsUpdatedAt = data.updated_at;
-
-            let changed = false;
-
-            if (typeof data.value.guestGridVisible !== 'undefined') {
-                state.settings.guestGridVisible = data.value.guestGridVisible !== false;
-                changed = true;
-            }
-
-            if (typeof data.value.guestRegistrationVisible !== 'undefined') {
-                state.settings.guestRegistrationVisible = data.value.guestRegistrationVisible !== false;
-                changed = true;
-            }
-
-            if (changed) {
-                if (typeof saveLocal === 'function') {
-                    saveLocal('pokerSettings', {
-                        primaryColor: state.settings.primaryColor,
-                        volume: state.settings.volume,
-                        totalPoints: state.settings.totalPoints,
-                        prizePlaces: state.settings.prizePlaces,
-                        tournament: state.tournament,
-                        guestGridVisible: state.settings.guestGridVisible,
-                        guestRegistrationVisible: state.settings.guestRegistrationVisible
-                    });
-                }
-
-                applyGuestGridVisibility();
-                applyGuestRegistrationVisibility();
-                updateAdminFeatureButtons();
-
-                console.log('Guest visibility synced:', {
-                    grid: state.settings.guestGridVisible,
-                    registration: state.settings.guestRegistrationVisible
-                });
-            }
-        } catch (err) {
-            console.warn('Guest grid visibility polling error:', err);
-        }
+        // v2: guestGridVisible/guestRegistrationVisible теперь приходят
+        // через единый settings-синхронизатор (loadSettingsFromCloudV2 /
+        // subscribeSettingsV2 / pollSettingsV2), который уже вызывает
+        // applySettingsData() -> applyGuestGridVisibility() и т.д.
+        // Отдельный опрос старой app_state здесь больше не нужен.
+        return;
     }
 
     function startSettingsPolling() {
@@ -4807,21 +4836,19 @@ init();
      * у гостя тоже играет нужный звук.
      ************************************************************/
 
-    if (typeof applyCloudRow === 'function' && !window.__STABLE_SOUND_CLOUD_PATCHED__) {
+    if (typeof applyTimerRowV2 === 'function' && !window.__STABLE_SOUND_CLOUD_PATCHED__) {
         window.__STABLE_SOUND_CLOUD_PATCHED__ = true;
 
-        const originalApplyCloudRow = applyCloudRow;
+        const originalApplyTimerRowV2 = applyTimerRowV2;
 
-        window.applyCloudRow = function (row) {
+        window.applyTimerRowV2 = applyTimerRowV2 = function (row) {
             const beforeKey = getStageKey();
             const beforeRunning = !!state.timer?.isRunning;
             const beforeStartedAt = state.timer?.tournamentStartedAt || null;
 
-            originalApplyCloudRow(row);
+            originalApplyTimerRowV2(row);
 
             try {
-                if (!row || row.key !== 'timer') return;
-
                 const afterKey = getStageKey();
                 const afterRunning = !!state.timer?.isRunning;
                 const afterStartedAt = state.timer?.tournamentStartedAt || null;
@@ -4864,8 +4891,6 @@ init();
                 console.warn('Guest cloud sound error:', err);
             }
         };
-
-        applyCloudRow = window.applyCloudRow;
     }
 
     /************************************************************
