@@ -70,6 +70,10 @@
             display: none !important;
         }
 
+        body.on-hub #homeNavBtn {
+            display: none !important;
+        }
+
         body.on-hub .header #userRole,
         body.on-hub .header #loginBtn,
         body.on-hub .header #logoutBtn {
@@ -1962,7 +1966,7 @@
         <div class="user-info">
     	<span class="user-role" id="userRole"> </span>
 
-    	<button class="btn nav-btn" data-page="hubPage">🏠 Главная</button>
+    	<button class="btn nav-btn" id="homeNavBtn" data-page="hubPage">🏠 Главная</button>
 
     	<div class="header-nav-group" id="headerNavGroup">
     	<button class="btn" id="leagueBtn" onclick="window.location.href='League.html'">♠ Лига 4покеристов</button>
