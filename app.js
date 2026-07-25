@@ -3118,6 +3118,7 @@ function showPage(pageId) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
 
     document.body.classList.toggle('on-hub', pageId === 'hubPage');
+    document.body.classList.toggle('on-timer', pageId === 'timerPage');
 
     ensureRulesPage();
     ensureTournamentPage();
@@ -3149,6 +3150,7 @@ function showPage(pageId) {
 function updateAdminUI() {
     setText('userRole', state.isAdmin ? 'Админ' : 'Гость');
     setText('hubUserRole', state.isAdmin ? 'Админ' : 'Гость');
+    setText('timerFooterRole', state.isAdmin ? 'Админ' : 'Гость');
 
     // Эти кнопки видны всем: и админу, и гостю
     show($('leagueBtn'), 'inline-block');
@@ -3164,6 +3166,8 @@ function updateAdminUI() {
         show($('logoutBtn'), 'inline-block');
         hide($('hubLoginBtn'));
         show($('hubLogoutBtn'), 'inline-block');
+        hide($('timerFooterLoginBtn'));
+        show($('timerFooterLogoutBtn'), 'inline-block');
 
         show($('timerControls'), 'flex');
         show($('progressContainer'));
@@ -3176,6 +3180,8 @@ function updateAdminUI() {
         hide($('logoutBtn'));
         show($('hubLoginBtn'), 'inline-block');
         hide($('hubLogoutBtn'));
+        show($('timerFooterLoginBtn'), 'inline-block');
+        hide($('timerFooterLogoutBtn'));
 
         hide($('timerControls'));
         hide($('progressContainer'));
@@ -3270,6 +3276,9 @@ function resetAll() {
     if ($('hubLoginBtn')) {
         $('hubLoginBtn').onclick = () => $('loginModal').classList.add('active');
     }
+    if ($('timerFooterLoginBtn')) {
+        $('timerFooterLoginBtn').onclick = () => $('loginModal').classList.add('active');
+    }
     if ($('gridGuestRegisterBtn')) {
         $('gridGuestRegisterBtn').onclick = () => openRegistrationEntry();
     }
@@ -3305,6 +3314,12 @@ function resetAll() {
 
     if ($('hubLogoutBtn')) {
         $('hubLogoutBtn').onclick = async () => {
+            await adminLogout();
+        };
+    }
+
+    if ($('timerFooterLogoutBtn')) {
+        $('timerFooterLogoutBtn').onclick = async () => {
             await adminLogout();
         };
     }
