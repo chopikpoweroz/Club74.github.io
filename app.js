@@ -1921,7 +1921,7 @@ function ensureRulesPage() {
             <div class="admin-panel">
                 <div class="admin-header">
                     <h2>📜 Правила турнира</h2>
-                    <button class="btn btn-secondary nav-btn" data-page="timerPage">← Назад к таймеру</button>
+                    <button class="btn btn-secondary nav-btn" data-page="hubPage">← На главную</button>
                 </div>
                 <div id="rulesContent"></div>
             </div>
@@ -2523,7 +2523,7 @@ function ensureTournamentPage() {
                         уровни, перерывы, участники, призовые очки и правила.
                     </p>
                 </div>
-                <button class="btn btn-secondary nav-btn" data-page="timerPage">← Назад к таймеру</button>
+                <button class="btn btn-secondary nav-btn" data-page="hubPage">← На главную</button>
             </div>
 
             <div class="tournament-tabs">
@@ -3084,54 +3084,30 @@ function renderTournamentRules() {
     const box = $('tournamentContent');
     if (!box) return;
 
-    if (state.isAdmin) {
-        box.innerHTML = `
-            <div class="tournament-panel">
-                <h3>📜 Правила турнира</h3>
+    /**
+     * Единый раздел правил — rulesPage (тот же, что открывается
+     * кнопкой «📜 Правила» из сетки). Отдельного редактора здесь
+     * больше нет, чтобы не редактировать в двух местах одно и то же.
+     */
+    box.innerHTML = `
+        <div class="tournament-panel">
+            <h3>📜 Правила турнира</h3>
 
-                <p style="color:var(--text-muted); margin-bottom:15px;">
-                    Админ может редактировать правила. Гости смогут только читать.
-                </p>
+            ${
+                state.rules.text
+                    ? `<div class="tournament-rules-view">${escapeHtml(state.rules.text)}</div>`
+                    : `<div class="tournament-empty">Правила пока не заполнены администратором</div>`
+            }
 
-                <textarea class="tournament-rules-textarea" id="tournamentRulesEditor"></textarea>
-
-                <div class="tournament-actions">
-                    <button class="btn btn-primary" onclick="saveTournamentRules()">💾 Сохранить правила</button>
-                    <button class="btn btn-secondary" onclick="insertTournamentDefaultRules()">📋 Вставить пример</button>
-                </div>
-            </div>
-        `;
-
-        $('tournamentRulesEditor').value = state.rules.text || '';
-    } else {
-        box.innerHTML = `
-            <div class="tournament-panel">
-                <h3>📜 Правила турнира</h3>
-
-                ${
-                    state.rules.text
-                        ? `<div class="tournament-rules-view">${escapeHtml(state.rules.text)}</div>`
-                        : `<div class="tournament-empty">Правила пока не заполнены администратором</div>`
-                }
-            </div>
-        `;
-    }
-}
-
-function saveTournamentRules() {
-    if (!state.isAdmin) return;
-
-    state.rules.text = $('tournamentRulesEditor').value.trim();
-
-    localStorage.setItem('pokerRulesText', state.rules.text);
-
-    writeSettingsToCloudV2();
-
-    alert('Правила сохранены');
-}
-
-function insertTournamentDefaultRules() {
-    $('tournamentRulesEditor').value = defaultRulesText();
+            ${
+                state.isAdmin
+                    ? `<div class="tournament-actions" style="margin-top:15px;">
+                           <button class="btn btn-primary nav-btn" data-page="rulesPage">✏️ Редактировать правила</button>
+                       </div>`
+                    : ''
+            }
+        </div>
+    `;
 }
 
 /************************************************************
