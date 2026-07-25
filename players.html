@@ -7,15 +7,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
     :root {
-        --primary-color: #00bfff;
-        --secondary-color: #1a3a5c;
-        --bg-color: #0a0e1a;
-        --card-bg: #1a2332;
-        --text-color: #ffffff;
-        --text-muted: #8b92a8;
-        --border-color: #2a3447;
-        --success-color: #00bfff;
-        --warning-color: #ffa500;
+        --primary-color: #d4af37;
+        --secondary-color: #6b1439;
+        --bg-color: #150b22;
+        --card-bg: #241533;
+        --text-color: #f2e6c9;
+        --text-muted: #b8a888;
+        --border-color: #3d2a4d;
+        --success-color: #d4af37;
+        --warning-color: #e0a92e;
         --danger-color: #ff4757;
     }
 
@@ -59,14 +59,14 @@
         user-select: none;
     }
 
-    .btn-primary { background: var(--primary-color); color: white; }
-    .btn-primary:hover { background: #0099cc; transform: translateY(-2px); }
+    .btn-primary { background: var(--primary-color); color: #1a0e2e; }
+    .btn-primary:hover { background: #e8c766; transform: translateY(-2px); }
     .btn-secondary { background: var(--secondary-color); color: white; }
-    .btn-secondary:hover { background: #2a4a6c; }
-    .btn-success { background: var(--success-color); color: white; }
-    .btn-success:hover { background: #0099cc; }
-    .btn-warning { background: var(--warning-color); color: white; }
-    .btn-warning:hover { background: #e69500; }
+    .btn-secondary:hover { background: #8a1c4a; }
+    .btn-success { background: var(--success-color); color: #1a0e2e; }
+    .btn-success:hover { background: #e8c766; }
+    .btn-warning { background: var(--warning-color); color: #1a0e2e; }
+    .btn-warning:hover { background: #f0bc4e; }
     .btn-danger { background: var(--danger-color); color: white; }
     .btn-danger:hover { background: #ff3344; }
     .btn-small { padding: 6px 12px; font-size: 12px; }
@@ -504,23 +504,17 @@ function updateAuthUI() {
 
 /************************************************************
  * ВИДИМОСТЬ РЕГИСТРАЦИИ
- * Управляется тем же переключателем "Регистрация: Показана/Скрыта",
- * что и на главной странице (index.html). Админ кнопку видит всегда,
- * гостю она показывается только если регистрация не скрыта админом.
+ * В отличие от сетки турнира (index.html), здесь регистрация
+ * доступна только админу — гость не может сам добавить себя
+ * в базу участников клуба.
  ************************************************************/
 function applyRegistrationVisibility() {
     const btn = $('openRegisterBtn');
     if (!btn) return;
 
-    if (isAdmin) {
-        btn.style.display = 'inline-block';
-        return;
-    }
+    btn.style.display = isAdmin ? 'inline-block' : 'none';
 
-    btn.style.display = guestRegistrationVisible ? 'inline-block' : 'none';
-
-    // Если гость уже открыл соглашение/форму, а админ в этот момент скрыл регистрацию — закрываем модалки.
-    if (!guestRegistrationVisible) {
+    if (!isAdmin) {
         $('agreementModal').classList.remove('active');
         $('registerModal').classList.remove('active');
     }
