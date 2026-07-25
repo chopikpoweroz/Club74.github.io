@@ -300,12 +300,15 @@
  * SUPABASE (тот же проект, что и в app.js)
  ************************************************************/
 const SUPABASE_URL = 'https://ivvzrjnutuyoqtlzpbqx.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_yazZ-oVnnAzq4zci1mlRZQ_7XxA2Np-';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2dnpyam51dHV5b3F0bHpwYnF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjY2NzQsImV4cCI6MjA5ODQwMjY3NH0.haUuHEhGrBCQ5xflu_l-dKmFRMs_r-Qo3rlCSzvec4I';
+
+// Тот же единственный админ, что и в app.js — вход через Supabase Auth.
+const ADMIN_EMAIL = 'Caponerj@mail.ru';
 
 let supabaseClient = null;
+let tournamentId = null;
 let players = [];
-let isAdmin = localStorage.getItem('pokerTimerIsAdmin') === 'true';
-let adminPassword = localStorage.getItem('pokerTimerPassword') || 'secret';
+let isAdmin = false;
 let editingId = null;
 let agreementAccepted = false;
 let guestRegistrationVisible = true;
@@ -328,76 +331,78 @@ async function initSupabase() {
     }
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    await refreshSettingsFromCloud();
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    isAdmin = !!sessionData?.session;
+    updateAuthUI();
+
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+        isAdmin = !!session;
+        updateAuthUI();
+    });
+
+    const { data: t, error: tErr } = await supabaseClient
+        .from('tournaments')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+    if (tErr || !t) {
+        console.error('Не удалось получить tournaments.id:', tErr);
+        return;
+    }
+    tournamentId = t.id;
+
+    await loadSettingsBits();
     applyRegistrationVisibility();
-    await loadAgreementText();
     await loadPlayers();
     subscribeRealtime();
 }
 
-async function loadAgreementText() {
+async function loadSettingsBits() {
     try {
         const { data, error } = await supabaseClient
-            .from('app_state')
-            .select('value')
-            .eq('key', 'players_agreement')
+            .from('settings')
+            .select('guest_registration_visible, club_agreement_text')
+            .eq('tournament_id', tournamentId)
             .maybeSingle();
-        if (!error && data && data.value && data.value.text) {
-            agreementText = String(data.value.text);
+
+        if (!error && data) {
+            guestRegistrationVisible = data.guest_registration_visible !== false;
+            if (data.club_agreement_text) {
+                agreementText = String(data.club_agreement_text);
+            }
         }
     } catch (e) {
-        console.warn('Не удалось получить текст соглашения:', e);
+        console.warn('Не удалось получить настройки:', e);
     }
 }
 
 async function saveAgreementText(text) {
+    if (!isAdmin || !tournamentId) return;
     try {
         const { error } = await supabaseClient
-            .from('app_state')
-            .upsert({
-                key: 'players_agreement',
-                value: { text },
-                updated_at: new Date().toISOString()
-            });
+            .from('settings')
+            .update({ club_agreement_text: text, updated_at: new Date().toISOString() })
+            .eq('tournament_id', tournamentId);
         if (error) console.error('Ошибка сохранения соглашения:', error);
     } catch (e) {
         console.error('saveAgreementText error:', e);
     }
 }
 
-async function refreshSettingsFromCloud() {
-    try {
-        const { data, error } = await supabaseClient
-            .from('app_state')
-            .select('value')
-            .eq('key', 'settings')
-            .maybeSingle();
-        if (!error && data && data.value) {
-            if (data.value.adminPassword) {
-                adminPassword = String(data.value.adminPassword);
-                localStorage.setItem('pokerTimerPassword', adminPassword);
-            }
-            if (typeof data.value.guestRegistrationVisible !== 'undefined') {
-                guestRegistrationVisible = data.value.guestRegistrationVisible !== false;
-            }
-        }
-    } catch (e) {
-        console.warn('Не удалось получить пароль из облака:', e);
-    }
-}
-
 async function loadPlayers() {
     try {
         const { data, error } = await supabaseClient
-            .from('app_state')
-            .select('value')
-            .eq('key', 'players')
-            .maybeSingle();
+            .from('club_members')
+            .select('*')
+            .order('created_at');
+
         if (error) {
             console.error('Ошибка чтения игроков:', error);
             return;
         }
-        players = (data && Array.isArray(data.value)) ? data.value : [];
+
+        players = (data || []).map(rowToPlayer);
         sortPlayers();
         renderTable();
     } catch (e) {
@@ -405,45 +410,37 @@ async function loadPlayers() {
     }
 }
 
-async function savePlayers() {
-    try {
-        const { error } = await supabaseClient
-            .from('app_state')
-            .upsert({
-                key: 'players',
-                value: players,
-                updated_at: new Date().toISOString()
-            });
-        if (error) console.error('Ошибка записи игроков:', error);
-    } catch (e) {
-        console.error('savePlayers error:', e);
-    }
+function rowToPlayer(row) {
+    return {
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        points: row.points,
+        cups: row.cups,
+        created_at: row.created_at
+    };
 }
 
 function subscribeRealtime() {
     supabaseClient
-        .channel('players_page_state')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
+        .channel('club_members_page')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'club_members' }, () => {
+            loadPlayers();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: 'tournament_id=eq.' + tournamentId }, payload => {
             if (!payload.new) return;
-            if (payload.new.key === 'players' && Array.isArray(payload.new.value)) {
-                players = payload.new.value;
-                sortPlayers();
-                renderTable();
+            guestRegistrationVisible = payload.new.guest_registration_visible !== false;
+            if (payload.new.club_agreement_text) {
+                agreementText = String(payload.new.club_agreement_text);
             }
-            if (payload.new.key === 'settings' && payload.new.value) {
-                if (payload.new.value.adminPassword) {
-                    adminPassword = String(payload.new.value.adminPassword);
-                }
-                if (typeof payload.new.value.guestRegistrationVisible !== 'undefined') {
-                    guestRegistrationVisible = payload.new.value.guestRegistrationVisible !== false;
-                    applyRegistrationVisibility();
-                }
-            }
-            if (payload.new.key === 'players_agreement' && payload.new.value && payload.new.value.text) {
-                agreementText = String(payload.new.value.text);
-            }
+            applyRegistrationVisibility();
         })
         .subscribe();
+
+    // Фолбэк-поллинг на случай обрыва realtime.
+    setInterval(() => {
+        if (!isAdmin) loadPlayers();
+    }, 5000);
 }
 
 function sortPlayers() {
@@ -611,19 +608,20 @@ $('submitRegisterBtn').onclick = async () => {
     if (!name) { alert('Введите имя'); return; }
     if (!phone) { alert('Введите сотовый номер'); return; }
 
-    const newPlayer = {
-        id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)),
-        name, phone, points, cups,
-        created_at: new Date().toISOString()
-    };
+    const { error } = await supabaseClient
+        .from('club_members')
+        .insert({ name, phone, points, cups });
 
-    players.push(newPlayer);
-    sortPlayers();
-    renderTable();
+    if (error) {
+        console.error('Ошибка регистрации:', error);
+        alert('Не удалось зарегистрироваться, попробуйте ещё раз');
+        return;
+    }
+
     $('registerModal').classList.remove('active');
     agreementAccepted = false;
 
-    await savePlayers();
+    await loadPlayers();
 };
 
 /************************************************************
@@ -653,32 +651,32 @@ $('exportPlayersBtn').onclick = () => {
 };
 
 /************************************************************
- * LOGIN / LOGOUT
+ * LOGIN / LOGOUT (Supabase Auth — тот же аккаунт, что и в app.js)
  ************************************************************/
-$('loginBtn').onclick = async () => {
-    await refreshSettingsFromCloud();
+$('loginBtn').onclick = () => {
     $('adminPasswordInput').value = '';
     $('loginModal').classList.add('active');
 };
 
 $('cancelLoginBtn').onclick = () => $('loginModal').classList.remove('active');
 
-$('confirmLoginBtn').onclick = () => {
+$('confirmLoginBtn').onclick = async () => {
     const entered = $('adminPasswordInput').value;
-    if (entered === adminPassword) {
-        isAdmin = true;
-        localStorage.setItem('pokerTimerIsAdmin', 'true');
+    const { error } = await supabaseClient.auth.signInWithPassword({
+        email: ADMIN_EMAIL,
+        password: entered
+    });
+
+    if (!error) {
         $('loginModal').classList.remove('active');
-        updateAuthUI();
+        // isAdmin и updateAuthUI() обновятся автоматически через onAuthStateChange.
     } else {
         alert('Неверный пароль');
     }
 };
 
-$('logoutBtn').onclick = () => {
-    isAdmin = false;
-    localStorage.setItem('pokerTimerIsAdmin', 'false');
-    updateAuthUI();
+$('logoutBtn').onclick = async () => {
+    await supabaseClient.auth.signOut();
 };
 
 /************************************************************
@@ -700,28 +698,46 @@ window.openEditModal = openEditModal;
 $('cancelEditBtn').onclick = () => $('editModal').classList.remove('active');
 
 $('saveEditBtn').onclick = async () => {
-    const p = players.find(pl => pl.id === editingId);
-    if (!p) return;
     const name = $('editName').value.trim();
     if (!name) { alert('Введите имя'); return; }
 
-    p.name = name;
-    p.phone = $('editPhone').value.trim();
-    p.points = parseInt($('editPoints').value, 10) || 0;
-    p.cups = parseInt($('editCups').value, 10) || 0;
+    const { error } = await supabaseClient
+        .from('club_members')
+        .update({
+            name,
+            phone: $('editPhone').value.trim(),
+            points: parseInt($('editPoints').value, 10) || 0,
+            cups: parseInt($('editCups').value, 10) || 0,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', editingId);
 
-    sortPlayers();
-    renderTable();
+    if (error) {
+        console.error('Ошибка сохранения:', error);
+        alert('Не удалось сохранить изменения');
+        return;
+    }
+
     $('editModal').classList.remove('active');
-    await savePlayers();
+    await loadPlayers();
 };
 
 $('deletePlayerBtn').onclick = async () => {
     if (!confirm('Удалить этого игрока?')) return;
-    players = players.filter(pl => pl.id !== editingId);
-    renderTable();
+
+    const { error } = await supabaseClient
+        .from('club_members')
+        .delete()
+        .eq('id', editingId);
+
+    if (error) {
+        console.error('Ошибка удаления:', error);
+        alert('Не удалось удалить игрока');
+        return;
+    }
+
     $('editModal').classList.remove('active');
-    await savePlayers();
+    await loadPlayers();
 };
 
 /************************************************************
