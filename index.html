@@ -8,15 +8,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
-            --primary-color: #00bfff;
-            --secondary-color: #1a3a5c;
-            --bg-color: #0a0e1a;
-            --card-bg: #1a2332;
-            --text-color: #ffffff;
-            --text-muted: #8b92a8;
-            --border-color: #2a3447;
-            --success-color: #00bfff;
-            --warning-color: #ffa500;
+            --primary-color: #d4af37;
+            --secondary-color: #6b1439;
+            --bg-color: #150b22;
+            --card-bg: #241533;
+            --text-color: #f2e6c9;
+            --text-muted: #b8a888;
+            --border-color: #3d2a4d;
+            --success-color: #d4af37;
+            --warning-color: #e0a92e;
             --danger-color: #ff4757;
         }
 
@@ -62,78 +62,280 @@
          * HUB (главная страница)
          * ============================================================ */
 
-        .hub-wrap {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: clamp(20px, 4vw, 50px) 20px 60px;
+        body.on-hub .header-nav-group {
+            display: none !important;
         }
 
-        .hub-hero {
-            display: flex;
-            align-items: center;
-            gap: 24px;
-            background: linear-gradient(135deg, var(--card-bg), var(--bg-color));
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: clamp(24px, 4vw, 40px);
-            margin-bottom: clamp(24px, 4vw, 40px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        body.on-hub .logo {
+            display: none !important;
         }
 
-        .hub-hero-avatar {
-            flex: 0 0 auto;
-            width: clamp(72px, 10vw, 96px);
-            height: clamp(72px, 10vw, 96px);
-            border-radius: 20px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        body.on-hub .header #userRole,
+        body.on-hub .header #loginBtn,
+        body.on-hub .header #logoutBtn {
+            display: none !important;
+        }
+
+        body.on-hub .hub-footer-auth {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: clamp(34px, 5vw, 46px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+            gap: 12px;
+            margin-top: clamp(32px, 6vw, 56px);
+            padding-top: clamp(20px, 3vw, 28px);
+            border-top: 1px solid rgba(212,175,55,0.2);
+            opacity: 0.85;
         }
 
-        .hub-hero-text h1 {
-            font-size: clamp(22px, 4vw, 32px);
+        body.on-hub .hub-footer-auth #hubLoginBtn,
+        body.on-hub .hub-footer-auth #hubLogoutBtn {
+            font-size: 12px;
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.08);
+            color: rgba(232,199,102,0.55);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            font-weight: 400;
+        }
+
+        body.on-hub .hub-footer-auth #hubLoginBtn:hover,
+        body.on-hub .hub-footer-auth #hubLogoutBtn:hover {
+            background: rgba(255,255,255,0.14);
+            color: rgba(232,199,102,0.85);
+        }
+
+        body.on-hub .hub-footer-auth .user-role {
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        body.on-hub .header {
+            border-bottom-color: transparent;
+            background: transparent;
+        }
+
+        body.on-hub {
+            --hub-gold: #d4af37;
+            --hub-gold-soft: #e8c766;
+            --hub-wine: #6b1439;
+            --hub-purple: #2a1140;
+            background: linear-gradient(160deg, #1a0e2e, #2a0f22 55%, #1a0e2e);
+            position: relative;
+        }
+
+        body.on-hub::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse at 15% 10%, rgba(212,175,55,0.10), transparent 45%),
+                radial-gradient(ellipse at 85% 90%, rgba(107,20,57,0.35), transparent 50%),
+                repeating-linear-gradient(45deg, rgba(212,175,55,0.02) 0 2px, transparent 2px 42px),
+                radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.35) 100%);
+        }
+
+        body.on-hub .header,
+        body.on-hub .hub-wrap {
+            position: relative;
+            z-index: 1;
+        }
+
+        .header-nav-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        @keyframes hubFadeUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes hubFloat {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-6px); }
+        }
+
+        @keyframes hubGlow {
+            0%, 100% { box-shadow: 0 8px 20px rgba(0,0,0,0.35), 0 0 0 rgba(0,191,255,0); }
+            50%      { box-shadow: 0 8px 20px rgba(0,0,0,0.35), 0 0 30px var(--primary-color); }
+        }
+
+        .hub-wrap {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: clamp(40px, 8vw, 90px) 20px 60px;
+        }
+
+        body.on-hub .hub-hero {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: linear-gradient(135deg, rgba(42,17,64,0.7), rgba(26,14,46,0.85));
+            border: 1px solid rgba(212,175,55,0.25);
+            border-radius: 24px;
+            padding: clamp(28px, 5vw, 48px);
+            margin-bottom: clamp(32px, 6vw, 56px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+            animation: hubFadeUp 0.6s ease both;
+        }
+
+        body.on-hub .hub-hero-avatar {
+            flex: 0 0 auto;
+            width: clamp(72px, 10vw, 100px);
+            height: clamp(72px, 10vw, 100px);
+            border-radius: 22px;
+            background: linear-gradient(135deg, var(--hub-gold), var(--hub-wine));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(34px, 5vw, 48px);
+            color: #1a0e2e;
+            animation: hubFloat 3.5s ease-in-out infinite, hubGlowGold 3.5s ease-in-out infinite;
+        }
+
+        @keyframes hubGlowGold {
+            0%, 100% { box-shadow: 0 8px 20px rgba(0,0,0,0.35), 0 0 0 rgba(212,175,55,0); }
+            50%      { box-shadow: 0 8px 20px rgba(0,0,0,0.35), 0 0 30px rgba(212,175,55,0.55); }
+        }
+
+        body.on-hub .hub-hero-text h1 {
+            font-size: clamp(24px, 4.5vw, 34px);
             margin-bottom: 6px;
-            color: var(--text-color);
+            color: var(--hub-gold-soft);
         }
 
-        .hub-hero-text p {
-            color: var(--text-muted);
+        body.on-hub .hub-hero-text p {
+            color: rgba(232,199,102,0.6);
             font-size: clamp(13px, 2vw, 15px);
         }
 
         .hub-tiles {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            display: flex;
+            flex-direction: column;
             gap: 16px;
+            max-width: 640px;
+            margin: 0 auto;
         }
 
         .hub-tile {
+            position: relative;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 24px;
+            border-radius: 14px;
+            padding: 22px 26px;
             cursor: pointer;
-            text-align: left;
-            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            text-align: center;
+            transition: border-color 0.2s ease, background 0.2s ease;
             color: var(--text-color);
             font-family: inherit;
+            opacity: 0;
+            animation: hubFadeUp 0.5s ease both;
+            animation-delay: calc(var(--i, 0) * 0.08s + 0.15s);
         }
 
-        .hub-tile:hover {
-            transform: translateY(-4px);
-            border-color: var(--primary-color);
-            box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+        /* Декоративный крупный символ на фоне плитки */
+        .hub-tile::before {
+            content: attr(data-bg-symbol);
+            position: absolute;
+            font-size: 150px;
+            line-height: 1;
+            right: -20px;
+            bottom: -30px;
+            opacity: 0.10;
+            transform: rotate(-12deg);
+            pointer-events: none;
+            animation: hubSymbolDrift 6s ease-in-out infinite;
+            z-index: 0;
+        }
+
+        /* Затемняющий градиент поверх символа, чтобы текст не терялся */
+        .hub-tile::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(0,0,0,0.35), rgba(0,0,0,0.6));
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .hub-tile > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        body.on-hub .hub-tile {
+            background: linear-gradient(135deg, rgba(42,17,64,0.55), rgba(26,14,46,0.7));
+            border: 1px solid rgba(212,175,55,0.18);
+            color: #f2e6c9;
+        }
+
+        body.on-hub .hub-tile-desc {
+            color: rgba(232,199,102,0.5);
+        }
+
+        body.on-hub .hub-tile--timer::before      { content: '⏱'; color: var(--hub-gold); }
+        body.on-hub .hub-tile--grid::before        { content: '♠'; color: var(--hub-gold-soft); }
+        body.on-hub .hub-tile--rules::before       { content: '📜'; color: var(--hub-gold); }
+        body.on-hub .hub-tile--rating::before      { content: '♥'; color: var(--hub-gold-soft); }
+        body.on-hub .hub-tile--tournament::before  { content: '♣'; color: var(--hub-wine); }
+        body.on-hub .hub-tile--editor::before      { content: '🎛'; color: var(--hub-gold); }
+        body.on-hub .hub-tile--results::before     { content: '♦'; color: var(--hub-wine); }
+
+        @keyframes hubSymbolDrift {
+            0%, 100% { transform: rotate(-12deg) translateY(0); }
+            50%      { transform: rotate(-8deg) translateY(-10px); }
+        }
+
+        .hub-tile:hover::before {
+            opacity: 0.18;
+        }
+
+        .hub-tile:hover .hub-tile-icon {
+            transform: scale(1.12) rotate(-3deg);
+        }
+
+        body.on-hub .hub-tile:hover {
+            border-color: var(--hub-gold);
+            background: linear-gradient(135deg, rgba(107,20,57,0.45), rgba(42,17,64,0.7));
+            box-shadow: 0 8px 24px rgba(212,175,55,0.12);
+        }
+
+        body.on-hub .hub-tile-title {
+            color: #f7ecc9;
         }
 
         .hub-tile-icon {
-            font-size: 30px;
+            width: 58px;
+            height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            border-radius: 16px;
+            margin-bottom: 6px;
+            transition: transform 0.25s ease;
+        }
+
+        body.on-hub .hub-tile-icon {
+            background: linear-gradient(135deg, var(--hub-gold), var(--hub-wine));
+            box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+            animation: hubIconGlow 3.2s ease-in-out infinite;
+            animation-delay: calc(var(--i, 0) * 0.2s);
+        }
+
+        @keyframes hubIconGlow {
+            0%, 100% { box-shadow: 0 6px 16px rgba(0,0,0,0.35), 0 0 0 rgba(212,175,55,0); }
+            50%      { box-shadow: 0 6px 16px rgba(0,0,0,0.35), 0 0 18px rgba(212,175,55,0.5); }
         }
 
         .hub-tile-title {
@@ -146,27 +348,20 @@
             color: var(--text-muted);
         }
 
-        .hub-admin-section {
-            margin-top: clamp(24px, 4vw, 40px);
-            padding-top: clamp(20px, 3vw, 30px);
-            border-top: 1px dashed var(--border-color);
-        }
-
-        .hub-admin-label {
-            color: var(--warning-color);
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            margin-bottom: 14px;
-        }
-
         .hub-tile-admin {
-            border-color: rgba(255,165,0,0.25);
+            border-color: rgba(255,165,0,0.3);
         }
 
         .hub-tile-admin:hover {
             border-color: var(--warning-color);
+        }
+
+        .hub-admin-only {
+            display: none;
+        }
+
+        body.is-admin .hub-admin-only {
+            display: flex;
         }
 
         .user-role {
@@ -191,11 +386,11 @@
 
         .btn-primary {
             background: var(--primary-color);
-            color: white;
+            color: #1a0e2e;
         }
 
         .btn-primary:hover {
-            background: #0099cc;
+            background: #e8c766;
             transform: translateY(-2px);
         }
 
@@ -205,25 +400,25 @@
         }
 
         .btn-secondary:hover {
-            background: #2a4a6c;
+            background: #8a1c4a;
         }
 
         .btn-success {
             background: var(--success-color);
-            color: white;
+            color: #1a0e2e;
         }
 
         .btn-success:hover {
-            background: #0099cc;
+            background: #e8c766;
         }
 
         .btn-warning {
             background: var(--warning-color);
-            color: white;
+            color: #1a0e2e;
         }
 
         .btn-warning:hover {
-            background: #e69500;
+            background: #f0bc4e;
         }
 
         .btn-danger {
@@ -368,13 +563,48 @@
             font-size: 15px;
         }
 
-        .timer-controls .btn-secondary {
-            background: var(--secondary-color);
-            color: var(--text-muted);
+        .btn-icon {
+            width: 64px;
+            height: 64px;
+            min-width: 64px !important;
+            padding: 0 !important;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            line-height: 1;
         }
 
-        .timer-controls .btn-secondary:hover {
-            color: white;
+        .btn-icon-img {
+            width: 34px;
+            height: 34px;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        .btn-icon.btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+        }
+
+        .btn-icon.btn-secondary {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+
+        .btn-icon:hover {
+            transform: translateY(-3px) scale(1.06);
+            box-shadow: 0 10px 22px rgba(212,175,55,0.25);
+        }
+
+        .btn-icon.btn-secondary:hover {
+            border-color: var(--primary-color);
+        }
+
+        .timer-controls .btn-secondary {
+            border-color: var(--border-color);
         }
 
         .stats {
@@ -654,7 +884,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300"><ellipse cx="250" cy="150" rx="220" ry="120" fill="%2327ae60" stroke="%238b4513" stroke-width="12"/></svg>') center/contain no-repeat;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300"><defs><radialGradient id="feltGrad" cx="0.5" cy="0.5" r="0.65"><stop offset="0" stop-color="%238a8a98"/><stop offset="1" stop-color="%232a2a35"/></radialGradient><linearGradient id="borderGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%2360a5fa"/><stop offset="1" stop-color="%231e3a8a"/></linearGradient></defs><ellipse cx="250" cy="150" rx="220" ry="120" fill="url(%23feltGrad)" stroke="url(%23borderGrad)" stroke-width="12"/></svg>') center/contain no-repeat;
         }
 
         .table-oval.final-table {
@@ -1726,19 +1956,21 @@
 }
     </style>
 </head>
-<body>
+<body class="on-hub">
     <div class="header">
         <div class="logo">🃏 Poker Timer</div>
         <div class="user-info">
     	<span class="user-role" id="userRole"> </span>
 
+    	<div class="header-nav-group" id="headerNavGroup">
     	<button class="btn nav-btn" data-page="hubPage">🏠 Главная</button>
     	<button class="btn" id="leagueBtn" onclick="window.location.href='League.html'">♠ Лига 4покеристов</button>
-    	<button class="btn btn-success" id="playersBtn" onclick="window.location.href='players.html'">👥 Участники клуба</button>
+    	<button class="btn btn-success" id="playersBtn" onclick="window.location.href='players.html'">🏆 Рейтинг</button>
 
     	<button class="btn btn-warning nav-btn" data-page="ratingPage" id="ratingBtn">🏆 Результаты</button>
     	<button class="btn btn-success nav-btn" data-page="gridPage" id="gridBtn">📊 Сетка</button>
     	<button class="btn btn-secondary nav-btn" data-page="tournamentPage" id="editorBtn" style="display:none;">⚙️ Турнир</button>
+    	</div>
     	<button class="btn btn-primary" id="loginBtn">Вход</button>
     	<button class="btn btn-secondary" id="logoutBtn" style="display:none;">Выход</button>
         </div>
@@ -1747,7 +1979,7 @@
     <div class="page active" id="hubPage">
         <div class="hub-wrap">
             <div class="hub-hero">
-                <div class="hub-hero-avatar">🃏</div>
+                <div class="hub-hero-avatar">♠</div>
                 <div class="hub-hero-text">
                     <h1>Poker Timer</h1>
                     <p>Клуб «Чпокеристы» — таймер турниров, сетка, правила и участники в одном месте</p>
@@ -1755,52 +1987,53 @@
             </div>
 
             <div class="hub-tiles">
-                <button class="hub-tile nav-btn" data-page="timerPage">
-                    <span class="hub-tile-icon">🃏</span>
+                <button class="hub-tile hub-tile--timer nav-btn" data-page="timerPage" style="--i:0">
+                    <span class="hub-tile-icon">⏱️</span>
                     <span class="hub-tile-title">Poker Timer</span>
                     <span class="hub-tile-desc">Таймер уровней турнира</span>
                 </button>
 
-                <button class="hub-tile nav-btn" data-page="gridPage">
+                <button class="hub-tile hub-tile--grid nav-btn" data-page="gridPage" id="hubGridTile" style="--i:1">
                     <span class="hub-tile-icon">📊</span>
                     <span class="hub-tile-title">Сетка</span>
-                    <span class="hub-tile-desc">Столы и рассадка участников</span>
+                    <span class="hub-tile-desc">Турнирная сетка и регистрация участников</span>
                 </button>
 
-                <button class="hub-tile" onclick="window.location.href='Rules.html'">
+                <button class="hub-tile hub-tile--rules" onclick="window.location.href='Rules.html'" style="--i:2">
                     <span class="hub-tile-icon">📜</span>
                     <span class="hub-tile-title">Правила</span>
                     <span class="hub-tile-desc">Регламент турниров клуба</span>
                 </button>
 
-                <button class="hub-tile" id="hubRegisterTile">
-                    <span class="hub-tile-icon">📝</span>
-                    <span class="hub-tile-title">Регистрация</span>
-                    <span class="hub-tile-desc">Записаться на турнир</span>
+                <button class="hub-tile hub-tile--rating" onclick="window.location.href='players.html'" style="--i:3">
+                    <span class="hub-tile-icon">🏆</span>
+                    <span class="hub-tile-title">Рейтинг</span>
+                    <span class="hub-tile-desc">Очки и кубки участников клуба</span>
+                </button>
+
+                <button class="hub-tile hub-tile-admin hub-tile--tournament nav-btn hub-admin-only" data-page="tournamentPage" style="--i:4">
+                    <span class="hub-tile-icon">⚙️</span>
+                    <span class="hub-tile-title">Турнир</span>
+                    <span class="hub-tile-desc">Финальный стол, завершение</span>
+                </button>
+
+                <button class="hub-tile hub-tile-admin hub-tile--editor nav-btn hub-admin-only" data-page="editorPage" style="--i:5">
+                    <span class="hub-tile-icon">🎛</span>
+                    <span class="hub-tile-title">Редактор</span>
+                    <span class="hub-tile-desc">Шаблоны, звук, настройки</span>
+                </button>
+
+                <button class="hub-tile hub-tile-admin hub-tile--results nav-btn hub-admin-only" data-page="ratingPage" style="--i:6">
+                    <span class="hub-tile-icon">🏆</span>
+                    <span class="hub-tile-title">Результаты</span>
+                    <span class="hub-tile-desc">Таблица итогов турнира</span>
                 </button>
             </div>
 
-            <div class="hub-admin-section" id="hubAdminSection" style="display:none;">
-                <div class="hub-admin-label">Панель администратора</div>
-                <div class="hub-tiles hub-tiles-admin">
-                    <button class="hub-tile hub-tile-admin nav-btn" data-page="tournamentPage">
-                        <span class="hub-tile-icon">⚙️</span>
-                        <span class="hub-tile-title">Турнир</span>
-                        <span class="hub-tile-desc">Финальный стол, завершение</span>
-                    </button>
-
-                    <button class="hub-tile hub-tile-admin nav-btn" data-page="editorPage">
-                        <span class="hub-tile-icon">🎛</span>
-                        <span class="hub-tile-title">Редактор</span>
-                        <span class="hub-tile-desc">Шаблоны, звук, настройки</span>
-                    </button>
-
-                    <button class="hub-tile hub-tile-admin nav-btn" data-page="ratingPage">
-                        <span class="hub-tile-icon">🏆</span>
-                        <span class="hub-tile-title">Результаты</span>
-                        <span class="hub-tile-desc">Таблица итогов турнира</span>
-                    </button>
-                </div>
+            <div class="hub-footer-auth">
+                <span class="user-role" id="hubUserRole"> </span>
+                <button class="btn btn-primary" id="hubLoginBtn">Вход для админа</button>
+                <button class="btn btn-secondary" id="hubLogoutBtn" style="display:none;">Выход</button>
             </div>
         </div>
     </div>
@@ -1829,11 +2062,21 @@
                 <div class="next-level">Следующий уровень: <strong id="nextLevelInfo">200 / 400</strong></div>
 
                 <div class="timer-controls" id="timerControls">
-                    <button class="btn btn-primary" id="startBtn">▶ Старт</button>
-                    <button class="btn btn-secondary" id="pauseBtn">⏸ Пауза</button>
-                    <button class="btn btn-secondary" id="backBtn">⏮ Назад</button>
-                    <button class="btn btn-secondary" id="forwardBtn">⏭ Вперёд</button>
-                    <button class="btn btn-secondary" id="resetBtn">↺ Сброс</button>
+                    <button class="btn btn-icon btn-primary" id="startBtn" title="Старт" aria-label="Старт">
+                        <img class="btn-icon-img" src="https://cdn-icons-png.flaticon.com/128/7477/7477009.png" alt="Старт">
+                    </button>
+                    <button class="btn btn-icon btn-secondary" id="pauseBtn" title="Пауза" aria-label="Пауза">
+                        <img class="btn-icon-img" src="https://cdn-icons-png.flaticon.com/128/6878/6878704.png" alt="Пауза">
+                    </button>
+                    <button class="btn btn-icon btn-secondary" id="backBtn" title="Предыдущий уровень" aria-label="Назад">
+                        <img class="btn-icon-img" src="https://cdn-icons-png.flaticon.com/128/3325/3325377.png" alt="Назад">
+                    </button>
+                    <button class="btn btn-icon btn-secondary" id="forwardBtn" title="Следующий уровень" aria-label="Вперёд">
+                        <img class="btn-icon-img" src="https://cdn-icons-png.flaticon.com/128/15732/15732319.png" alt="Вперёд">
+                    </button>
+                    <button class="btn btn-icon btn-secondary" id="resetBtn" title="Сброс" aria-label="Сброс">
+                        <img class="btn-icon-img" src="https://cdn-icons-png.flaticon.com/128/10118/10118694.png" alt="Сброс">
+                    </button>
                 </div>
             </div>
 
@@ -2078,6 +2321,7 @@
                     <div class="grid-timer-blinds"><span id="gridSmallBlind">100</span> / <span id="gridBigBlind">200</span></div>
                     <div class="grid-timer-time" id="gridTimerDisplay">15:00</div>
                 </div>
+                <button class="btn btn-success" id="gridGuestRegisterBtn" style="display:none;">📝 Зарегистрироваться</button>
                 <button class="btn btn-secondary nav-btn" data-page="timerPage">← Назад к таймеру</button>
             </div>
 
